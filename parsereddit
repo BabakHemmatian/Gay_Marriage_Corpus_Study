@@ -3,11 +3,10 @@ from __future__ import print_function
 from json import JSONDecoder    # imports the code to parse json
 import bz2                      # imports the code to open bz2-compressed files
 import os
-from sys import argv            # import to read script arguments
+#from sys import argv            # import to read script arguments
 import string
 import HTMLParser
 import codecs
-import string
 import re
 import numpy as np
 import lda
