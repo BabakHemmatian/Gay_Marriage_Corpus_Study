@@ -44,4 +44,4 @@ for filename in os.listdir(path):
             # get rid of line breaks, and print
                 print(" ".join(body.split()), sep="\t",end="\n", file=fout)
         fout.close()
-print(stop)
+print 
