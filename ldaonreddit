@@ -1,0 +1,54 @@
+#!/python27
+from json import JSONDecoder    # imports the code to parse json
+import bz2                      # imports the code to open bz2-compressed files
+import os
+import codecs
+import numpy as np
+import lda
+# initialize the cooccurrence matrix
+cooc_mat = np.zeros((1,1))
+# initialize the list of words
+bag_of_words = []
+# This is the json parser
+decoder = JSONDecoder(encoding='utf-8')
+path = "C:/Reddit_Comments"
+counter = 0
+for filename in os.listdir(path):
+    if "prep" in filename:
+        fin = codecs.open(filename,mode='r',encoding='utf8')
+        for line in fin:
+            if line != "":
+            # comment = decoder.decode(line)
+            # body = HTMLParser.HTMLParser().unescape(comment["body"])
+            # if body != 'deleted' and body != '':
+                line = line.encode('ascii','ignore')
+                line = line.replace(chr(1),' ')
+                line = line.replace("\n","")
+                line = line.replace("\r","")
+                counter += 1
+                # form a document-term cooccurrence matrix
+                if counter > 1:
+                    cooc_mat = np.r_[cooc_mat,np.zeros((1,len(cooc_mat[0])))]
+                temp = line.split(" ")
+                for word in temp:
+                    if "http" not in word and word.isdigit() == False:
+                        if bag_of_words == []:
+                            bag_of_words.append(word)
+                            cooc_mat[0][0]+=1
+                        else:
+                            if word not in bag_of_words:
+                                bag_of_words.append(word)
+                                cooc_mat = np.c_[cooc_mat,np.zeros((len(cooc_mat),1))]
+                                cooc_mat[len(cooc_mat)-1][len(cooc_mat[0])-1]+=1
+                            else:
+                                cooc_mat[len(cooc_mat)-1][bag_of_words.index(word)]+=1
+cooc_mat = cooc_mat.astype(np.int32)
+# print(bag_of_words)
+# print(cooc_mat)
+model = lda.LDA(n_topics=10, n_iter=1500, random_state=1)
+model.fit(cooc_mat)  # model.fit_transform(X) is also available
+topic_word = model.topic_word_  # model.components_ also works
+n_top_words = 8
+for i, topic_dist in enumerate(topic_word):
+    topic_words = np.array(bag_of_words)[np.argsort(topic_dist)][:-n_top_words:-1]
+    print('Topic {}: {}'.format(i, ' '.join(topic_words)))
