@@ -1,74 +1,46 @@
-#!/usr/bin/python3
+#!/python27
 from __future__ import print_function
 from json import JSONDecoder    # imports the code to parse json
 import bz2                      # imports the code to open bz2-compressed files
 import os
-#from sys import argv            # import to read script arguments
 import string
 import HTMLParser
-import codecs
 import re
-import numpy as np
-import lda
 import nltk
 nltk.download('wordnet')
-import string
+nltk.download('stopwords')
 # preprocessing function
 stop = set(nltk.corpus.stopwords.words('english'))
+stop = [word.encode('ascii') for word in stop]
 exclude = set(string.punctuation)
 lemma = nltk.stem.WordNetLemmatizer()
-def clean(doc):
-    stop_free = " ".join([i for i in doc.lower().split() if i not in stop])
+def clean(text):
+    stop_free = " ".join([i for i in text.lower().split() if i not in stop])
     punc_free = ''.join(ch for ch in stop_free if ch not in exclude)
     normalized = " ".join(lemma.lemmatize(word) for word in punc_free.split())
     return normalized
 # This is the json parser
 decoder = JSONDecoder(encoding='utf-8')
-path = "D:/Reddit_Comments"
-# initialize the cooccurrence matrix
-cooc_mat = np.zeros((1,1))
-# initialize the list of words
-bag_of_words = []
+path = "C:/Reddit_Comments"
+# choose the comments that are related to gay marriage (the syns taken from Wordnet)
+GAYMAR = re.compile("(gay|homosexual|homophile|fag|faggot|fagot|queer|homo|fairy|nance|pansy|queen).*(marry|marri)", re.IGNORECASE)
 for filename in os.listdir(path):
-    if filename.endswith(".bz2"):
+    if os.path.splitext(filename)[1] == '.bz2':
 # open the file as a text file (rt="read text"), in utf8 encoding
         fin = bz2.BZ2File(filename,'r')
-        fout = open('Print.txt', 'a+')#bz2.BZ2File(argv[2],'w')
+        output_filename = "%s_prep" % (os.path.splitext(filename)[0])
+        fout = open(output_filename,'a+')#bz2.BZ2File(argv[2],'w')
     # every line is a comment
-        print(filename,sep="/n",file=fout)
-        for jsonline in fin:
         #
         # parse the json, and turn it to regular text
         #
-            comment = decoder.decode(jsonline)
+        for line in fin:
+            comment = decoder.decode(line)
             body = HTMLParser.HTMLParser().unescape(comment["body"])
+            if len(GAYMAR.findall(body)) > 0:
             # preprocess
-            body = clean(body)
-            # separate valid comments
-            if body != 'deleted' and body != '':
+                body = clean(body)
                 body = body.encode('utf-8')
             # get rid of line breaks, and print
-#                print(" ".join(body.split()), sep="\t",end="\n", file=fout)
-# form a document-term cooccurrence matrix
-                cooc_mat = np.r_[cooc_mat,np.zeros((1,len(cooc_mat[0])))]
-                temp = body.split(" ")
-                for word in temp:
-                    if bag_of_words == []:
-                        bag_of_words.append(word)
-                        cooc_mat[0][0]+=1
-                    else:
-                        if word not in bag_of_words:
-                            bag_of_words.append(word)
-                            cooc_mat = np.c_[cooc_mat,np.zeros((len(cooc_mat),1))]
-                            cooc_mat[len(cooc_mat)-1][len(cooc_mat[0])-1]+=1
-                        else:
-                            cooc_mat[len(cooc_mat)-1][bag_of_words.index(word)]+=1
-fout.close()
-print(bag_of_words)
-# model = lda.LDA(n_topics=20, n_iter=1500, random_state=1)
-# model.fit(cooc_mat)  # model.fit_transform(X) is also available
-# topic_word = model.topic_word_  # model.components_ also works
-# n_top_words = 8
-# for i, topic_dist in enumerate(topic_word):
-# ...     topic_words = np.array(vocab)[np.argsort(topic_dist)][:-n_top_words:-1]
-# ...     print('Topic {}: {}'.format(i, ' '.join(topic_words)))
+                print(" ".join(body.split()), sep="\t",end="\n", file=fout)
+        fout.close()
