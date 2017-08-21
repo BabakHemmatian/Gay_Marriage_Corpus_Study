@@ -38,6 +38,8 @@ class request():
     # Retrieve the index of the next "page" of results (used to paginate
     # through multiple pages of results)
     def get_next_val(self,json_obj,page=False):
+        if 'next' not in json_obj['paging']:
+            return False
         nextval=json_obj['paging']['next']
         if page:
             return self.get_data(url=nextval)
