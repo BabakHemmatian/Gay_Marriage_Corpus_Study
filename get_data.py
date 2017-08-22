@@ -1,3 +1,45 @@
+"""Retrieves and writes to file all comments on all relevant* Facebook posts
+made by nine American news sources from 2008 through 2016.
+*A post is considered relevant if its message contains a match to the regex
+defined in utils.getFilterRegex().
+
+Zipped and archived directories are created in the user's working directory
+each of which contains the data and is named for each unique pair of news 
+sources and years (if a news source did not make any relevant posts in a 
+given year, the corresponding directory will not exist). Each file in these 
+directories is named after a unique post ID, and contains JSON-formatted
+data on all the comments on the corresponding post.
+Example:
+    $ ls $WORKING_DIR
+    > wsj-2010  wsj-2011    wsj-2012    wsj-2013    wsj-2014    wsj-2015
+      wsj-2016  ...
+    $ ls $WORKING_DIR/wsj-2011
+    > 8304333127_154962911240990    8304333127_219958831377828  ...
+    $ head $WORKING_DIR/wsj-2011/8304333127_154962911240990
+    > [{"created_time": "2011-06-14T13:17:32+0000", "message":...
+
+The json library can be used to convert the contents of each file into a
+single JSON object, which is essentially a list of dictionaries. Each of 
+these dictionaries corresponds to a comment. The key/value pairs of the 
+dictionaries contain information about the comment:
+
+# created_time (datetime): The time this comment was made
+# message (string): The comment text
+# from (User; a dictionary): The person that made this comment. The
+  dictionary paired with "from" itself has two key/value pairs:
+  # name (string): The person's full name
+  # id (numeric string): The id of this person's user account
+# id (string): The comment ID
+# children (Comments; a list of dictionaries): A list of the Comment objects
+  that are replies to this comment. N.B.: This is the only "developer-
+  generated" key/value pair, in the sense that the value is not returned by 
+  the same query that returns its parent comment. Note that this key/value 
+  pair does not exist in  Comment objects to which there are no direct 
+  replies.
+
+https://developers.facebook.com/docs/graph-api/reference
+"""
+
 import json
 import os
 import collector
