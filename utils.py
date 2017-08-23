@@ -49,4 +49,4 @@ def unix_to_iso8601(unix_str):
     return time.strftime('%Y-%m-%dT%H:%M:%S',time.localtime(unix_str))
 
 def getFilterRegex():
-    return re.compile("(gay|homosexual|homophile|fag|faggot|fagot|queer|homo|fairy|nance|pansy|queen).*(marry|marri)", re.IGNORECASE)
+    return re.compile("^(?=.*gay|.*homosexual|.*homophile|.*fag|.*faggot|.*fagot|.*queer|.*homo|.*fairy|.*nance|.*pansy|.*queen|.*LGBT|.*GLBT|.*same.sex|.*lesbian|.*dike|.*dyke|.*butch|.*sodom|.*bisexual)(?=.*marry|.*marri|.*civil union).*$", re.I)
