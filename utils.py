@@ -21,7 +21,7 @@ def zip_(fn,dir_=False):
 
     rep_dict=dict(fn=fn)
     if dir_:
-        if len(os.listdir(dir_))>0:
+        if len(os.listdir(fn))>0:
             os.system('tar -cf %(fn)s.tar %(fn)s/* && bzip2 %(fn)s.tar && rm -rf %(fn)s'%rep_dict)
         else:
             os.system('rm -r %(fn)s'%rep_dict)
