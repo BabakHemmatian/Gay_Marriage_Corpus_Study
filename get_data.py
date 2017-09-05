@@ -95,10 +95,9 @@ def get_all_children(some_cmt_data):
                 grandchildren+=children_
             children=grandchildren
 
-media=['wsj']
 if __name__=='__main__':
     for source in media:
-        for year in range(2010,2011):
+        for year in range(2008,2017):
             dir_=getRelPath('{}-{}'.format(source,year))
             os.system('mkdir -p {}'.format(dir_))
             # TODO: Confusing, but seemingly harmless. Look into cases like the
