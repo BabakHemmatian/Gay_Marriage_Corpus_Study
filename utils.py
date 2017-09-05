@@ -9,14 +9,22 @@ def getRelPath(fn):
     return WORKING_DIR+fn
 
 def getAccessToken():
+    if not os.path.exists(ACCESS_TOKEN_FILE):
+        return raw_input('Enter access token here: ').strip()
     with open(ACCESS_TOKEN_FILE,'r') as fh:
         return fh.read().strip()
 
 def getAppID():
+    if not os.path.exists(APP_ID_FILE):
         return raw_input('Enter app ID here: ').strip()
+    with open(APP_ID_FILE,'r') as fh:
+        return fh.read().strip()
 
 def getAppSecret():
+    if not os.path.exists(APP_SECRET_FILE):
         return raw_input('Enter app secret here: ').strip()
+    with open(APP_SECRET_FILE,'r') as fh:
+        return fh.read().strip()
 
 def create_long_term_token():
     auth={'SHORT_TERM_ACCESS_TOKEN': getAccessToken(),
