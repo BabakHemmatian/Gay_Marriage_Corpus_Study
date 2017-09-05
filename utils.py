@@ -1,10 +1,9 @@
+import os
 import random
 import re
 import string
 import time
-
-WORKING_DIR='./'
-ACCESS_TOKEN_FILE='/Users/sabinasloman/Desktop/.access_token'
+from config import *
 
 def getRelPath(fn):
     return WORKING_DIR+fn
@@ -12,6 +11,26 @@ def getRelPath(fn):
 def getAccessToken():
     with open(ACCESS_TOKEN_FILE,'r') as fh:
         return fh.read().strip()
+
+def getAppID():
+    with open(APP_ID_FILE,'r') as fh:
+        return fh.read().strip()
+
+def getAppSecret():
+    with open(APP_SECRET_FILE,'r') as fh:
+        return fh.read().strip()
+
+def create_long_term_token():
+    auth={'SHORT_TERM_ACCESS_TOKEN': getAccessToken(),
+          'CLIENT_ID': getAppID(),
+          'CLIENT_SECRET': getAppSecret()
+         }
+    url='https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=%(CLIENT_ID)s&client_secret=%(CLIENT_SECRET)s&fb_exchange_token=%(SHORT_TERM_ACCESS_TOKEN)s'%auth
+    cmd='curl -X GET \"{}\"'.format(url)
+    print cmd
+    with os.popen(cmd) as fh:
+        token=fh.read().strip()
+    return token
 
 def to_ascii(s):
     return s.encode('ascii','ignore')
