@@ -1,6 +1,9 @@
 # All files created by this package will be named relative to WORKING_DIR.
 WORKING_DIR='./'
 
+# Log files will be stored in LOGGING_DIR.
+LOGGING_DIR='./LOGS/'
+
 # Where your app's ID is stored in plain text (see the project's wiki for
 # finding your app's ID).
 APP_ID_FILE='/Users/sabinasloman/Desktop/.app_id'
@@ -11,3 +14,7 @@ APP_SECRET_FILE='/Users/sabinasloman/Desktop/.app_secret'
 
 # Where your API access token is stored in plain text.
 ACCESS_TOKEN_FILE='/Users/sabinasloman/Desktop/.access_token'
+
+# The API host
+BASE_URL="https://graph.facebook.com/"
+

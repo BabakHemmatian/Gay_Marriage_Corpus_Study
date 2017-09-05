@@ -1,3 +1,5 @@
+#!/usr/local/bin/python
+
 """Retrieves and writes to file all comments on all relevant* Facebook posts
 made by nine American news sources from 2008 through 2016.
 *A post is considered relevant if its message contains a match to the regex
@@ -43,6 +45,7 @@ https://developers.facebook.com/docs/graph-api/reference
 import json
 import os
 import collector
+from config import *
 from utils import *
 
 # Choose nine relatively popular political platforms that fall at different
@@ -92,9 +95,10 @@ def get_all_children(some_cmt_data):
                 grandchildren+=children_
             children=grandchildren
 
+media=['wsj']
 if __name__=='__main__':
     for source in media:
-        for year in range(2008,2017):
+        for year in range(2010,2011):
             dir_=getRelPath('{}-{}'.format(source,year))
             os.system('mkdir -p {}'.format(dir_))
             # TODO: Confusing, but seemingly harmless. Look into cases like the

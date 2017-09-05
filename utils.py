@@ -62,10 +62,15 @@ def unzip_(fn,dir_=False):
     else:
        os.system('bunzip2 -v %(fn)s.bz2'%rep_dict)
 
-def startLog():
+def startLog(log=True, id_=None):
     import logging
-
-    logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',level=logging.INFO)
+    kwargs_=dict(format='%(asctime)s : %(levelname)s : %(message)s',
+                 level=logging.INFO
+                )
+    if log:
+        assert not isinstance(id_,type(None))
+        kwargs_['filename']=LOGGING_DIR+id_+'.log'
+    logging.basicConfig(**kwargs_)
 
 def iso8601_to_unix(iso8601_str):
     return time.mktime(time.strptime(iso8601_str,'%Y-%m-%dT%H:%M:%S'))

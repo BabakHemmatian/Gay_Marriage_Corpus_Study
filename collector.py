@@ -1,16 +1,20 @@
 import logging
 import json
 import os
+import random
 import requests
+import string
 import time
+from config import *
 from utils import *
-
-BASE_URL="https://graph.facebook.com/"
 
 # A wrapper for functions to interact directly with the Graph API
 class request():
-    def __init__(self):
-        startLog()
+    def __init__(self, log=True, id_=None):
+        if isinstance(id_,type(None)):
+            id_=''.join(random.choice(string.lowercase) for _ in range(6))
+        self.id_=id_
+        startLog(log=log, id_=id_)
     
     # Returns a json object with the response to a query whose arguments
     # are specified as arguments to the function.
@@ -20,10 +24,23 @@ class request():
             assert not edge
         else:
             url=self._format_request(node,edge,**kwargs)
-        logging.info('Sending request to '+url)
-        response=requests.get(url)
-        assert response.status_code==200
-        return json.loads(response.content)
+        while True:
+            logging.info('Sending request to '+url)
+            response=requests.get(url)
+            try:
+                assert response.status_code==200
+                return json.loads(response.content)
+            except AssertionError:
+                if '#17' in response.content:
+                    logging.info('Rate limit reached. Wait one hour.')
+                    time.sleep(3600)
+                # https://developers.facebook.com/bugs/1772936312959430/
+                if '#100' in response.content:
+                    logging.info('Reached absolute limit after retrieving \
+                    25000 comments on this post. Stop here.')
+                    return []
+                logging.info('Request failed with response {}: {}. Retrying.'.format(response.status_code,response.content))
+                continue
 
     # A helper function that formats API queries whose arguments are
     # specified as arguments to the function.
