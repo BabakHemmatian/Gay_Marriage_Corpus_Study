@@ -13,12 +13,10 @@ def getAccessToken():
         return fh.read().strip()
 
 def getAppID():
-    with open(APP_ID_FILE,'r') as fh:
-        return fh.read().strip()
+        return raw_input('Enter app ID here: ').strip()
 
 def getAppSecret():
-    with open(APP_SECRET_FILE,'r') as fh:
-        return fh.read().strip()
+        return raw_input('Enter app secret here: ').strip()
 
 def create_long_term_token():
     auth={'SHORT_TERM_ACCESS_TOKEN': getAccessToken(),
