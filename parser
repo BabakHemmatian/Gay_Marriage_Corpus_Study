@@ -1,0 +1,97 @@
+#!/python27
+from __future__ import print_function
+import json   # imports the code to parse json
+from utils import *
+import tarfile
+import datetime
+import bz2                      # imports the code to open bz2-compressed files
+import os
+import string
+import HTMLParser
+import re
+import sys
+reload(sys)
+sys.setdefaultencoding('utf8')
+import nltk
+nltk.download('wordnet')
+nltk.download('stopwords')
+# choose database
+database = "Fb"
+outlet = ["wsj","nyt"]
+# preprocessing function
+stop = set(nltk.corpus.stopwords.words('english'))
+stop = [word.encode('ascii') for word in stop]
+exclude = set(string.punctuation)
+lemma = nltk.stem.WordNetLemmatizer()
+def clean(text):
+    stop_free = " ".join([i for i in text.lower().split() if i not in stop])
+    no_punc = re.compile('|'.join(map(re.escape, exclude)))
+    punc_free = no_punc.sub(' ',stop_free)
+    normalized = " ".join(lemma.lemmatize(word) for word in punc_free.split())
+    return normalized
+# This is the json parser
+decoder = json.JSONDecoder(encoding='utf-8')
+path = "C:/Reddit_Comments"
+GAYMAR = getFilterRegex()
+RC_year = dict()
+Fb_year = dict()
+# choose the comments that are related to gay marriage (the syns taken from Wordnet)
+for filename in os.listdir(path):
+    if database == "RC":
+        if os.path.splitext(filename)[1] == '.bz2' and 'RC' in filename:
+    # open the file as a text file (rt="read text"), in utf8 encoding
+            fin = bz2.BZ2File(filename,'r')
+            output_filename = "%s_prep" % (os.path.splitext(filename)[0])
+            fout = open(output_filename,'a+')#bz2.BZ2File(argv[2],'w')
+        # every line is a comment
+            #
+            # parse the json, and turn it to regular text
+            #
+            for line in fin:
+                comment = decoder.decode(line)
+                body = HTMLParser.HTMLParser().unescape(comment["body"])
+                if len(GAYMAR.findall(body)) > 0:
+                # preprocess
+                    created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y')
+                    if created_at not in RC_year:
+                        RC_year[created_at] = 1
+                    else:
+                        RC_year[created_at] += 1
+                    body = clean(body)
+                    body = body.replace("\n","")
+                    body = body.encode('utf-8')
+                # get rid of line breaks, and print
+                    print(" ".join(body.split()), sep="\t",end="\n", file=fout)
+            fout.close()
+    elif database == "Fb":
+        if os.path.splitext(filename)[1] == '.bz2' and any(x in filename for x in outlet):
+            current_outlet = [x for x in outlet if x in filename]
+            current_outlet = current_outlet[0]
+            pin = tarfile.open(path+'/'+filename, "r:bz2")
+            pin.extractall()
+            new_path = path + "/" + os.path.splitext(filename)[0].replace(".tar","")
+            for post in os.listdir(new_path):
+                if '._' not in post:
+                    output_filename = "%s_prep" % (os.path.splitext(post)[0])
+                    fout = open(new_path+"/"+output_filename,'a+')
+                    with open(new_path+'/'+post) as f:
+                        data = f.readline()
+                        jsondata = json.loads(data)
+                        for jsonline in jsondata:
+                            body = HTMLParser.HTMLParser().unescape(jsonline["message"])
+                            body = clean(body)
+                            body = body.replace("\n","")
+                            body = body.encode('utf8')
+                            print(" ".join(body.split()), end=' ', file=fout)
+                            created_at = str(jsonline["created_time"][0:4])
+                            if created_at+current_outlet not in Fb_year:
+                                Fb_year[created_at+current_outlet] = 1
+                            else:
+                                Fb_year[created_at+current_outlet] += 1
+                            if "children" in jsonline:
+                                for responses in jsonline["children"]:
+                                    response = HTMLParser.HTMLParser().unescape(responses["message"])
+                                    response = clean(response)
+                                    response = response.encode('utf8')
+                                    print(" ".join(response.split()), sep = "\t",end=' ',file=fout)
+                            print("\n",end="",file=fout)
