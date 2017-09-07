@@ -34,10 +34,13 @@ class request():
                 if '#17' in response.content:
                     logging.info('Rate limit reached. Wait one hour.')
                     time.sleep(3600)
-                # https://developers.facebook.com/bugs/1772936312959430/
                 if '#100' in response.content:
-                    logging.info('Reached absolute limit after retrieving \
-                    25000 comments on this post. Stop here.')
+                    logging.info("""
+                    Reached absolute limit. Stop here.
+                    
+                    For more information, visit
+                    https://developers.facebook.com/bugs/1772936312959430/.
+                    """)
                     return []
                 logging.info('Request failed with response {}: {}. Retrying.'.format(response.status_code,response.content))
                 continue

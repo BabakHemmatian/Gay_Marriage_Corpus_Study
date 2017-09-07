@@ -57,11 +57,14 @@ from utils import *
 # at SSRN.
 
 # Centrist publications
-media=[ 'TheHill', 'wsj', 'usatoday' ]
+sources=[ 'TheHill', 'wsj', 'usatoday' ]
 # Liberal-ish publications
-media+=[ 'HuffPost', 'nytimes', 'washingtonpost' ]
+sources+=[ 'HuffPost', 'nytimes', 'washingtonpost' ]
 # Conservative-ish publications
-media+=[ 'realclearpolitics', 'nationalreview', 'FoxNews' ]
+sources+=[ 'realclearpolitics', 'nationalreview', 'FoxNews' ]
+
+# Retrieve posts from 2008 through 2016.
+years=[ 2008,2009,2010,2011,2012,2013,2014,2015,2016 ]
 
 api_bind=collector.request()
 
@@ -96,12 +99,12 @@ def get_all_children(some_cmt_data):
             children=grandchildren
 
 if __name__=='__main__':
-    for source in media:
-        for year in range(2008,2017):
-            dir_=getRelPath('{}-{}'.format(source,year))
+    for source in sources:
+        for year in years:
+            dir_='{}{}-{}'.format(DATA_DIR,source,year)
             os.system('mkdir -p {}'.format(dir_))
-            # TODO: Confusing, but seemingly harmless. Look into cases like the
-            # following:
+            # TODO: Confusing, but seemingly harmless. Look into cases like 
+            # the following:
             ## $ head wsj-2012
             ## > [{"created_time": "2013-01-01T02:37:12+0000",...
             ## $ tail wsj-2013

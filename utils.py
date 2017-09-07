@@ -5,6 +5,10 @@ import string
 import time
 from config import *
 
+# Quirky OSX
+def listdir_(dir_):
+    return [ f for f in os.listdir(dir_) if f!='.DS_Store' ]
+
 def getRelPath(fn):
     return WORKING_DIR+fn
 
@@ -46,7 +50,7 @@ def zip_(fn,dir_=False):
 
     rep_dict=dict(fn=fn)
     if dir_:
-        if len(os.listdir(fn))>0:
+        if len(listdir_(fn))>0:
             os.system('tar -cf %(fn)s.tar %(fn)s/* && bzip2 %(fn)s.tar && rm -rf %(fn)s'%rep_dict)
         else:
             os.system('rm -r %(fn)s'%rep_dict)
@@ -56,9 +60,14 @@ def zip_(fn,dir_=False):
 def unzip_(fn,dir_=False):
     import os
 
-    rep_dict=dict(fn=fn)
+    dn,bn=os.path.dirname(fn),os.path.basename(fn)
+    rep_dict=dict(fn=fn,dn=dn,bn=bn)
     if dir_:
         os.system('bunzip2 %(fn)s.tar.bz2 && tar -xf %(fn)s.tar && rm %(fn)s.tar'%rep_dict)
+        # Something about the system call sometimes dumps the unzipped file
+        # into the PWD.
+        if bn not in os.listdir(dn):
+            os.system('mv %(bn)s %(dn)s'%rep_dict)
     else:
        os.system('bunzip2 -v %(fn)s.bz2'%rep_dict)
 
