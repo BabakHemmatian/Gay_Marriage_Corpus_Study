@@ -1,0 +1,104 @@
+#!/python27
+# -*- coding: utf-8 -*-
+# import the required modules and functions
+from __future__ import division
+from json import JSONDecoder    # imports the code to parse json
+import bz2                      # imports the code to open bz2-compressed files
+import os
+import codecs
+import numpy as np
+import lda
+import nltk
+# nltk.download('wordnet')
+# nltk.download('stopwords')
+# set database
+database = "Reddit"
+# define the set of stopwords
+stop = set(nltk.corpus.stopwords.words('english'))
+stop = [word.encode('ascii') for word in stop if word not in ("how","should","can","will","just","so","each","few","more","most","other","some","further","then","once","here","there","when","where","why","how","all","any","both","above","below","during","after","before","through","into","between","about","against","because","as","have","has","had","having","is","are","was","were","be","been","being","they","them","their","theirs","themselves","what","which","who","whom","i","me","my","myself","we","our","ours","ourselves","you","your","yours","yourself","yourselves")]
+# initialize the cooccurrence matrix
+cooc_mat = np.zeros((1,1))
+# initialize the list of words
+bag_of_words = []
+# This is the json parser
+decoder = JSONDecoder(encoding='utf-8')
+# path to the data
+path = "C:/Reddit_Comments"
+counter = 0
+# find preprocessed data
+for filename in os.listdir(path):
+    # for Reddit database
+    if database == "Reddit":
+        if "prep" in filename and "RC" in filename:
+            fin = codecs.open(filename,mode='r',encoding='utf8')
+            # fix the formatting of the data lines
+            for line in fin:
+                if line != "":
+                    line = line.encode('utf8','ignore')
+                    line = line.replace(chr(1),' ')
+                    line = line.replace("\n","")
+                    line = line.replace("\r","")
+                    counter += 1
+                    # form a document-term cooccurrence matrix
+                    if counter > 1:
+                        cooc_mat = np.r_[cooc_mat,np.zeros((1,len(cooc_mat[0])))]
+                    temp = line.split(" ")
+                    for word in temp:
+                        if "http" not in word and word.isdigit() == False and word not in stop and word.isalnum():
+                            if bag_of_words == []:
+                                bag_of_words.append(word)
+                                cooc_mat[0][0]+=1
+                            else:
+                                if word not in bag_of_words:
+                                    bag_of_words.append(word)
+                                    cooc_mat = np.c_[cooc_mat,np.zeros((len(cooc_mat),1))]
+                                    cooc_mat[len(cooc_mat)-1][len(cooc_mat[0])-1]+=1
+                                else:
+                                    cooc_mat[len(cooc_mat)-1][bag_of_words.index(word)]+=1
+    # if database is from Facebook
+    else:
+        if "prep" in filename and "RC" not in filename:
+            fin = codecs.open(filename,mode='r',encoding='utf8')
+            # fix the formatting of the data lines
+            for line in fin:
+                if line != "":
+                    line = line.encode('utf8','ignore')
+                    line = line.replace("\n","")
+                    line = line.replace("\r","")
+                    counter += 1
+                    # form a document-term cooccurrence matrix
+                    if counter > 1:
+                        cooc_mat = np.r_[cooc_mat,np.zeros((1,len(cooc_mat[0])))]
+                    temp = line.split(" ")
+                    for word in temp:
+                        if "http" not in word and word.isdigit() == False and word not in stop and word.isalnum():
+                            if bag_of_words == []:
+                                bag_of_words.append(word)
+                                cooc_mat[0][0]+=1
+                            else:
+                                if word not in bag_of_words:
+                                    bag_of_words.append(word)
+                                    cooc_mat = np.c_[cooc_mat,np.zeros((len(cooc_mat),1))]
+                                    cooc_mat[len(cooc_mat)-1][len(cooc_mat[0])-1]+=1
+                                else:
+                                    cooc_mat[len(cooc_mat)-1][bag_of_words.index(word)]+=1
+cooc_mat = cooc_mat.astype(np.int32)
+# define the number of topics
+n_topics = 100
+# run LDA
+model = lda.LDA(n_topics=n_topics,n_iter=1500, random_state=1)
+model.fit(cooc_mat)
+topic_word = model.topic_word_
+t_w_assignment = model.nzw_
+perc_assigned = np.array(np.zeros((n_topics,1)),dtype=float)
+n_top_words = 20
+# determine the percentage of all words in the corpus that is assigned to a certain topic
+print t_w_assignment
+for i in range(0,len(t_w_assignment)):
+    perc_assigned[i] = sum(t_w_assignment[i])/sum(sum(t_w_assignment))
+# print out the most likely words from each topic alongside the percentage of words assigned to it
+for i, topic_dist in enumerate(topic_word):
+    if perc_assigned[i]>= 0.01
+        topic_words = np.array(bag_of_words)[np.argsort(topic_dist)][:-n_top_words:-1]
+        print('Topic {}: {}'.format(i+1, ' '.join(topic_words)))
+        print("topic"+str(i+1)+":"+str(perc_assigned[i]))
