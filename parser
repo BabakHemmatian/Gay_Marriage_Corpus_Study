@@ -1,75 +1,90 @@
 #!/python27
+# -*- coding: utf-8 -*-
+# import the required modules and functions
 from __future__ import print_function
-import json   # imports the code to parse json
+import json
 from utils import *
 import tarfile
 import datetime
-import bz2                      # imports the code to open bz2-compressed files
-import os
+import bz2
 import string
 import HTMLParser
 import re
 import sys
+import nltk
+# nltk.download('wordnet')
+# nltk.download('stopwords')
+from collections import OrderedDict
+# set default file encoding
 reload(sys)
 sys.setdefaultencoding('utf8')
-import nltk
-nltk.download('wordnet')
-nltk.download('stopwords')
-# choose database
-database = "Fb"
-outlet = ["wsj","nyt"]
-# preprocessing function
+# choose database and outlets
+database = "RC"
+outlet = ["FoxNews","HuffPost","nationalreview","wsj","nytimes","realclearpolitics","TheHill","usatoday","washingtonpost"]
+# determine the set of stopwords used in preprocessing
 stop = set(nltk.corpus.stopwords.words('english'))
-stop = [word.encode('ascii') for word in stop]
+stop = [word.encode('ascii') for word in stop if word not in ("how","should","can","will","just","so","each","few","more","most","other","some","further","then","once","here","there","when","where","why","how","all","any","both","above","below","during","after","before","through","into","between","about","against","because","as","have","has","had","having","is","are","was","were","be","been","being","they","them","their","theirs","themselves","what","which","who","whom","i","me","my","myself","we","our","ours","ourselves","you","your","yours","yourself","yourselves")]
 exclude = set(string.punctuation)
 lemma = nltk.stem.WordNetLemmatizer()
+# define the preprocessing function to remove punctuation, special characters and stopwords, as well as normalize
 def clean(text):
-    stop_free = " ".join([i for i in text.lower().split() if i not in stop])
+    text = text.replace("'"," ")
+    special_free = ""
+    for words in text.lower().split():
+        words = re.sub('[^A-Za-z0-9]+', ' ', words)
+        special_free = special_free+" "+words
+    stop_free = " ".join([i for i in special_free.split() if i not in stop])
     no_punc = re.compile('|'.join(map(re.escape, exclude)))
     punc_free = no_punc.sub(' ',stop_free)
     normalized = " ".join(lemma.lemmatize(word) for word in punc_free.split())
     return normalized
 # This is the json parser
 decoder = json.JSONDecoder(encoding='utf-8')
+# where the data is
 path = "C:/Reddit_Comments"
+# define the relevance filter
 GAYMAR = getFilterRegex()
+# create dictionaries for storing the number of documents by media, year and outlet
 RC_year = dict()
 Fb_year = dict()
-# choose the comments that are related to gay marriage (the syns taken from Wordnet)
+# parse data
 for filename in os.listdir(path):
     if database == "RC":
         if os.path.splitext(filename)[1] == '.bz2' and 'RC' in filename:
     # open the file as a text file (rt="read text"), in utf8 encoding
             fin = bz2.BZ2File(filename,'r')
             output_filename = "%s_prep" % (os.path.splitext(filename)[0])
-            fout = open(output_filename,'a+')#bz2.BZ2File(argv[2],'w')
+            fout = open(output_filename,'a+')
         # every line is a comment
-            #
             # parse the json, and turn it to regular text
-            #
             for line in fin:
                 comment = decoder.decode(line)
                 body = HTMLParser.HTMLParser().unescape(comment["body"])
+                # filter comments by relevance to the topic
                 if len(GAYMAR.findall(body)) > 0:
-                # preprocess
+                    # record the number of documents by year
                     created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y')
                     if created_at not in RC_year:
                         RC_year[created_at] = 1
                     else:
                         RC_year[created_at] += 1
+                    # preprocess and print comments
                     body = clean(body)
                     body = body.replace("\n","")
-                    body = body.encode('utf-8')
-                # get rid of line breaks, and print
+                    body = body.replace("'"," ")
+                    body = body.encode("utf-8")
                     print(" ".join(body.split()), sep="\t",end="\n", file=fout)
             fout.close()
+    # for the Facebook database
     elif database == "Fb":
+        # unzip data files
         if os.path.splitext(filename)[1] == '.bz2' and any(x in filename for x in outlet):
             current_outlet = [x for x in outlet if x in filename]
             current_outlet = current_outlet[0]
             pin = tarfile.open(path+'/'+filename, "r:bz2")
             pin.extractall()
             new_path = path + "/" + os.path.splitext(filename)[0].replace(".tar","")
+            # open and read data files
             for post in os.listdir(new_path):
                 if '._' not in post:
                     output_filename = "%s_prep" % (os.path.splitext(post)[0])
@@ -78,20 +93,33 @@ for filename in os.listdir(path):
                         data = f.readline()
                         jsondata = json.loads(data)
                         for jsonline in jsondata:
+                            # clean and record the comments
                             body = HTMLParser.HTMLParser().unescape(jsonline["message"])
                             body = clean(body)
                             body = body.replace("\n","")
                             body = body.encode('utf8')
-                            print(" ".join(body.split()), end=' ', file=fout)
+                            print(" ".join(body.split()), end='\n', file=fout)
+                            # record the number of documents by year and outlet
                             created_at = str(jsonline["created_time"][0:4])
                             if created_at+current_outlet not in Fb_year:
                                 Fb_year[created_at+current_outlet] = 1
                             else:
                                 Fb_year[created_at+current_outlet] += 1
+                            # record comments that are replies to other comments
                             if "children" in jsonline:
                                 for responses in jsonline["children"]:
+                                    # clean and record the comments
                                     response = HTMLParser.HTMLParser().unescape(responses["message"])
                                     response = clean(response)
                                     response = response.encode('utf8')
-                                    print(" ".join(response.split()), sep = "\t",end=' ',file=fout)
-                            print("\n",end="",file=fout)
+                                    print(" ".join(response.split()), sep = "\t",end='\n',file=fout)
+                                    # record the number of reply documents by year and outlet
+                                    created_at = str(responses["created_time"][0:4])
+                                    if created_at+current_outlet not in Fb_year:
+                                        Fb_year[created_at+current_outlet] = 1
+                                    else:
+                                        Fb_year[created_at+current_outlet] += 1
+                            # print("\n",end="",file=fout) # needed if replies are considered part of the same document as the original comment. The ending of the comments would need to be changed to a "space" too in that case
+# show the distribution of documents by media, specific outlet and year
+print(OrderedDict(sorted(Fb_year.items())))
+print(OrderedDict(sorted(Fb_year.items())))
