@@ -48,20 +48,31 @@ import collector
 from config import *
 from utils import *
 
-# Choose nine relatively popular political platforms that fall at different
+# Choose ten relatively popular political platforms that fall at different
 # points along the political spectrum. Platform choice inspired by:
 # Faris, Robert and Roberts, Hal and Etling, Bruce and Bourassa, Nikki and 
 # Zuckerman, Ethan and Benkler, Yochai, Partisanship, Propaganda, and 
 # Disinformation: Online Media and the 2016 U.S. Presidential Election 
 # (August 2017). Berkman Klein Center Research Publication 2017-6. Available
 # at SSRN.
+#
+# We ranked each source in Faris et. al.'s list of Top 50 media sources by 
+# media inlinks (pg. 28) by number of Facebook followers (see
+# check_followers.py). From this ranked list, we chose the first 5 sources
+# with a liberal bias* and the first 5 sources with a conservative bias*.
+# Arbitrarily, we consider sources with a partisanship score whose absolute
+# value is < .10 as unbiased. Among the list of sources gathered by
+# check_followers.py, only Forbes fits this definition. We also include it in
+# our list of sources.
+#
+# *"Bias" is calculated using Faris et. al.'s Partisanship score (Appendix 3).
 
 # Centrist publications
-sources=[ 'TheHill', 'wsj', 'usatoday' ]
+sources=[ 'forbes' ]
 # Liberal-ish publications
-sources+=[ 'HuffPost', 'nytimes', 'washingtonpost' ]
+sources+=[ 'cnn','nytimes','ABCNews','BuzzFeed','HuffPost' ]
 # Conservative-ish publications
-sources+=[ 'realclearpolitics', 'nationalreview', 'FoxNews' ]
+sources+=[ 'FoxNews','DailyMail','DailyCaller','NYPost','Breitbart' ]
 
 # Retrieve posts from 2008 through 2016.
 years=[ 2008,2009,2010,2011,2012,2013,2014,2015,2016 ]
