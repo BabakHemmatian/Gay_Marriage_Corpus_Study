@@ -61,14 +61,17 @@ from utils import *
 # check_followers.py). From this ranked list, we chose the first 5 sources
 # with a liberal bias* and the first 5 sources with a conservative bias*.
 # Arbitrarily, we consider sources with a partisanship score whose absolute
-# value is < .10 as unbiased. Among the list of sources gathered by
-# check_followers.py, only Forbes fits this definition. We also include it in
-# our list of sources.
+# value is < .10 as unbiased. Four sources on our list fall into this
+# category, and we include them as well.
 #
-# *"Bias" is calculated using Faris et. al.'s Partisanship score (Appendix 3).
+# *"Bias" is calculated using Faris et. al.'s Partisanship score (Appendix 
+# 3):
+# s = <partisanship score>
+# -1<=s<=-.11 --> Liberal bias
+# .11<=s<=1 --> Conservative bias
 
 # Centrist publications
-sources=[ 'forbes' ]
+sources=[ 'businessinsider','wsj','forbes','TheHill' ]
 # Liberal-ish publications
 sources+=[ 'cnn','nytimes','ABCNews','BuzzFeed','HuffPost' ]
 # Conservative-ish publications
