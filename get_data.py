@@ -44,7 +44,7 @@ https://developers.facebook.com/docs/graph-api/reference
 
 import json
 import os
-import collector
+from collectors import collectors
 from config import *
 from utils import *
 
@@ -54,7 +54,7 @@ sources=left+middle+right
 # Retrieve posts from 2008 through 2016.
 years=[ 2008,2009,2010,2011,2012,2013,2014,2015,2016 ]
 
-api_bind=collector.request()
+api_bind=collectors.FacebookCollector()
 
 def filter_posts_by_regex(d):
     if 'message' not in d:
