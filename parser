@@ -4,6 +4,7 @@
 from __future__ import print_function
 import json
 from utils import *
+import os
 import tarfile
 import datetime
 import bz2
@@ -18,12 +19,23 @@ from collections import OrderedDict
 # set default file encoding
 reload(sys)
 sys.setdefaultencoding('utf8')
-# choose database and outlets
-database = "RC"
-outlet = ["FoxNews","HuffPost","nationalreview","wsj","nytimes","realclearpolitics","TheHill","usatoday","washingtonpost"]
-# determine the set of stopwords used in preprocessing
+# choose database and outlets (Reddit = Reddit, Fb = Facebook)
+database = "Reddit"
+liberal = ["nytimes","cnn","HuffPost","BuzzFeed","ABCNews"]
+centrist = ["businessinsider","TheHill","wsj","forbes"]
+conservative = ["FoxNews","Breitbart","NYPost","DailyMail","DailyCaller"]
+outlet = []
+# comment out the kind of outlet you don't want to include:
+for x in liberal:
+    outlet.append(x)
+for x in centrist:
+    outlet.append(x)
+for x in conservative:
+    outlet.append(x)
+# determine the set of stopwords used in preprocessing. Retest without removing a subset
 stop = set(nltk.corpus.stopwords.words('english'))
-stop = [word.encode('ascii') for word in stop if word not in ("how","should","can","will","just","so","each","few","more","most","other","some","further","then","once","here","there","when","where","why","how","all","any","both","above","below","during","after","before","through","into","between","about","against","because","as","have","has","had","having","is","are","was","were","be","been","being","they","them","their","theirs","themselves","what","which","who","whom","i","me","my","myself","we","our","ours","ourselves","you","your","yours","yourself","yourselves")]
+keepers = ["how","should","can","will","just","so","few","more","most","why","how","all","any","about","against","because","as","have","has","had","is","are","was","were","be","been","being","they","them","their","theirs","themselves","i","me","my","myself","we","our","ours","ourselves","you","your","yours","yourself","yourselves"]
+stop = [word.encode('ascii') for word in stop if word not in keepers]
 exclude = set(string.punctuation)
 lemma = nltk.stem.WordNetLemmatizer()
 # define the preprocessing function to remove punctuation, special characters and stopwords, as well as normalize
@@ -49,7 +61,7 @@ RC_year = dict()
 Fb_year = dict()
 # parse data
 for filename in os.listdir(path):
-    if database == "RC":
+    if database == "Reddit":
         if os.path.splitext(filename)[1] == '.bz2' and 'RC' in filename:
     # open the file as a text file (rt="read text"), in utf8 encoding
             fin = bz2.BZ2File(filename,'r')
@@ -84,6 +96,9 @@ for filename in os.listdir(path):
             pin = tarfile.open(path+'/'+filename, "r:bz2")
             pin.extractall()
             new_path = path + "/" + os.path.splitext(filename)[0].replace(".tar","")
+            pin2 = tarfile.open(new_path, "r:")
+            pin2.extractall()
+            new_path = new_path + "/" + "fbdata" + "/" + os.path.splitext(filename)[0].replace(".tar","")
             # open and read data files
             for post in os.listdir(new_path):
                 if '._' not in post:
@@ -121,5 +136,8 @@ for filename in os.listdir(path):
                                         Fb_year[created_at+current_outlet] += 1
                             # print("\n",end="",file=fout) # needed if replies are considered part of the same document as the original comment. The ending of the comments would need to be changed to a "space" too in that case
 # show the distribution of documents by media, specific outlet and year
-print(OrderedDict(sorted(Fb_year.items())))
-print(OrderedDict(sorted(Fb_year.items())))
+fcount = open(database+"_count",'a+')
+if database == "Reddit":
+    print(OrderedDict(sorted(RC_year.items())),end='\n',file=fcount)
+else:
+    print(OrderedDict(sorted(Fb_year.items())),end='\n',file=fcount)
