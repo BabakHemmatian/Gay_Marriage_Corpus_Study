@@ -53,7 +53,7 @@ def clean(text):
 # This is the json parser
 decoder = json.JSONDecoder(encoding='utf-8')
 # where the data is
-path = "C:/Reddit_Comments"
+path = os.path.dirname(sys.argv[0])
 # define the relevance filter
 GAYMAR = getFilterRegex()
 # create dictionaries for storing the number of documents by media, year and outlet
