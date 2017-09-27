@@ -13,14 +13,14 @@ import HTMLParser
 import re
 import sys
 import nltk
-# nltk.download('wordnet')
-# nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('stopwords')
 from collections import OrderedDict
 # set default file encoding
 reload(sys)
 sys.setdefaultencoding('utf8')
-# choose database and outlets (Reddit = Reddit, Fb = Facebook)
-database = "Reddit"
+### choose database and outlets (Reddit = Reddit, Fb = Facebook)
+database = "Fb"
 liberal = ["nytimes","cnn","HuffPost","BuzzFeed","ABCNews"]
 centrist = ["businessinsider","TheHill","wsj","forbes"]
 conservative = ["FoxNews","Breitbart","NYPost","DailyMail","DailyCaller"]
@@ -32,13 +32,16 @@ for x in centrist:
     outlet.append(x)
 for x in conservative:
     outlet.append(x)
-# determine the set of stopwords used in preprocessing. Retest without removing a subset
+### Preprocessing
+## determine the set of stopwords used in preprocessing. Retest without removing a subset
 stop = set(nltk.corpus.stopwords.words('english'))
 keepers = ["how","should","can","will","just","so","few","more","most","why","how","all","any","about","against","because","as","have","has","had","is","are","was","were","be","been","being","they","them","their","theirs","themselves","i","me","my","myself","we","our","ours","ourselves","you","your","yours","yourself","yourselves"]
 stop = [word.encode('ascii') for word in stop if word not in keepers]
+# since the s in "was" didn't encode properly during preprocessing, if the word is to be removed, "wa" should be added to the list of stopwords by removing the hashtag from the next line:
+# stop.append("wa")
 exclude = set(string.punctuation)
 lemma = nltk.stem.WordNetLemmatizer()
-# define the preprocessing function to remove punctuation, special characters and stopwords, as well as normalize
+## define the preprocessing function to remove punctuation, special characters and stopwords, as well as normalize
 def clean(text):
     text = text.replace("'"," ")
     special_free = ""
@@ -50,17 +53,20 @@ def clean(text):
     punc_free = no_punc.sub(' ',stop_free)
     normalized = " ".join(lemma.lemmatize(word) for word in punc_free.split())
     return normalized
-# This is the json parser
+### unpack data
+# json parser
 decoder = json.JSONDecoder(encoding='utf-8')
 # where the data is
-path = os.path.dirname(sys.argv[0])
+file_path = os.path.abspath(sys.argv[0])
+path = os.path.dirname(file_path)
 # define the relevance filter
 GAYMAR = getFilterRegex()
 # create dictionaries for storing the number of documents by media, year and outlet
 RC_year = dict()
 Fb_year = dict()
-# parse data
+### parse data
 for filename in os.listdir(path):
+    ## for the Reddit database
     if database == "Reddit":
         if os.path.splitext(filename)[1] == '.bz2' and 'RC' in filename:
     # open the file as a text file (rt="read text"), in utf8 encoding
@@ -87,7 +93,7 @@ for filename in os.listdir(path):
                     body = body.encode("utf-8")
                     print(" ".join(body.split()), sep="\t",end="\n", file=fout)
             fout.close()
-    # for the Facebook database
+    ## for the Facebook database
     elif database == "Fb":
         # unzip data files
         if os.path.splitext(filename)[1] == '.bz2' and any(x in filename for x in outlet):
@@ -135,9 +141,29 @@ for filename in os.listdir(path):
                                     else:
                                         Fb_year[created_at+current_outlet] += 1
                             # print("\n",end="",file=fout) # needed if replies are considered part of the same document as the original comment. The ending of the comments would need to be changed to a "space" too in that case
-# show the distribution of documents by media, specific outlet and year
+### show the distribution of documents by media, specific outlet and year
 fcount = open(database+"_count",'a+')
 if database == "Reddit":
     print(OrderedDict(sorted(RC_year.items())),end='\n',file=fcount)
 else:
     print(OrderedDict(sorted(Fb_year.items())),end='\n',file=fcount)
+### determine what percentage of the posts in each year was relevant
+## Reddit
+# the following line has the number of relevant comments in the Reddit database as of 9/26/17:
+# relevant = {'2006': 152, '2007': 636, '2008': 3246, '2009': 6141, '2010': 11543, '2011': 28401, '2012': 84897, '2013': 91411, '2014': 76372, '2015': 124377, '2016': 116611, '2017': 69214}
+d = {}
+with open("RC_Count_total.txt") as f:
+    for line in f:
+       (key, val) = line.split()
+       d[key] = int(val)
+year = {}
+perc_rel = {}
+for keys in d:
+    if str(keys[3:7]) in year:
+        year[str(keys[3:7])] += d[keys]
+    else:
+        year[str(keys[3:7])] = d[keys]
+for key in relevant:
+    perc_rel[key] = float(relevant[key]) / float(year[key])
+print OrderedDict(sorted(perc_rel.items()))
+## Facebook
