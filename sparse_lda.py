@@ -134,3 +134,4 @@ for i, topic_dist in enumerate(topic_word):
         topic_words = np.array(bag_of_words)[np.argsort(topic_dist)][:-n_top_words:-1]
         print('Topic {}: {}'.format(i+1, ' '.join(topic_words)))
         print("topic"+str(i+1)+":"+str(perc_assigned[i]))
+print("finished at "+time.strftime('%l:%M%p'))
