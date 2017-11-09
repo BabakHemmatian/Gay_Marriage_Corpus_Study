@@ -2,6 +2,7 @@ import os
 import random
 import re
 import string
+import subprocess
 import time
 from config import *
 
@@ -16,20 +17,17 @@ def to_ascii(s):
     return s.encode('ascii','ignore')
 
 def zip_(fn,dir_=False):
-    import os
-
-    rep_dict=dict(fn=fn)
+    dn,bn=os.path.dirname(fn),os.path.basename(fn)
+    rep_dict=dict(fn=fn, dn=dn, bn=bn)
     if dir_:
         if len(listdir_(fn))>0:
-            os.system('tar -cf %(fn)s.tar %(fn)s/* && bzip2 %(fn)s.tar && rm -rf %(fn)s'%rep_dict)
+            subprocess.call('cd %(dn)s && tar -cf %(bn)s.tar %(bn)s/* && bzip2 %(bn)s.tar && rm -rf %(bn)s'%rep_dict, shell=True)
         else:
             os.system('rm -r %(fn)s'%rep_dict)
     else:
         os.system('bzip2 -vf %(fn)s'%rep_dict)
 
 def unzip_(fn,dir_=False):
-    import os
-
     dn,bn=os.path.dirname(fn),os.path.basename(fn)
     rep_dict=dict(fn=fn,dn=dn,bn=bn)
     if dir_:
