@@ -53,6 +53,16 @@ def by_source_and_year(sources=None,years=None):
                     with open('{}/{}'.format(fname,f_)) as fh:
                        json_obj=json.loads(fh.read())
                     numc[source][year]+=len(json_obj)
+                    for cmt in json_obj:
+                        if 'children' in cmt:
+                            children=cmt['children']
+                            while len(children)>0:
+                                children_=[]
+                                numc[source][year]+=len(children)
+                                for child in children:
+                                    if 'children' in child:
+                                        children_.extend(child['children'])
+                                children=children_
                 zip_(fname,dir_=True)
 
     df_np=pd.DataFrame(nump)
