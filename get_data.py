@@ -44,7 +44,8 @@ https://developers.facebook.com/docs/graph-api/reference
 
 import json
 import os
-from collectors import collectors
+import requests
+from wordplay import collectors
 from config import *
 from utils import *
 
@@ -56,6 +57,11 @@ years=[ 2008,2009,2010,2011,2012,2013,2014,2015,2016 ]
 
 api_bind=collectors.FacebookCollector()
 
+def get_json(response):
+    if not hasattr(response, 'content'):
+        return []
+    return json.loads(response.content)
+
 def filter_posts_by_regex(d):
     if 'message' not in d:
         return False
@@ -63,10 +69,12 @@ def filter_posts_by_regex(d):
 
 def get_children(cmt):
     id_=cmt['id']
-    json_obj=api_bind.get_data(node=id_,edge='comments',limit=100)
+    response=api_bind.get_data(node=id_,edge='comments',limit=100)
+    json_obj=get_json(response)
     child_data=json_obj['data']
     while len(json_obj['data'])>0:
-        json_obj=api_bind.get_next_val(json_obj,page=True)
+        response=api_bind.get_next_val(json_obj,page=True)
+        json_obj=get_json(response)
         if not json_obj:
             break
         child_data+=json_obj['data']
@@ -86,7 +94,7 @@ def get_all_children(some_cmt_data):
                 grandchildren+=children_
             children=grandchildren
 
-if __name__=='__main__':
+def main():
     for source in sources:
         for year in years:
             dir_='{}{}-{}'.format(DATA_DIR,source,year)
@@ -97,32 +105,36 @@ if __name__=='__main__':
             ## > [{"created_time": "2013-01-01T02:37:12+0000",...
             ## $ tail wsj-2013
             ## > {"created_time": "2013-01-01T17:26:49+0000",...
-            json_obj=api_bind.get_data(node=source,edge='posts',
-                                        since=iso8601_to_unix(
-                                        '{}-01-01T00:00:00'.format(year)
-                                        ),
-                                        until=iso8601_to_unix(
-                                        '{}-12-31T23:59:59'.format(year)
-                                        ),
-                                        limit=100)
+            response=api_bind.get_data(node=source,edge='posts',
+                                       since=iso8601_to_unix(
+                                       '{}-01-01T00:00:00'.format(year)
+                                       ),
+                                       until=iso8601_to_unix(
+                                       '{}-12-31T23:59:59'.format(year)
+                                       ),
+                                       limit=100)
+            json_obj=get_json(response)
             data=[]
             data+=[ d for d in json_obj['data'] if filter_posts_by_regex(d) ]
             while len(json_obj['data'])>0:
-                json_obj=api_bind.get_next_val(json_obj,page=True)
+                response=api_bind.get_next_val(json_obj,page=True)
+                json_obj=get_json(response)
                 if not json_obj:
                     break
                 data+=[ d for d in json_obj['data'] if filter_posts_by_regex(d) 
                     ]
             for post in data:
                 id_=post['id']
-                json_obj=api_bind.get_data(node=id_,edge='comments',limit=100)
+                response=api_bind.get_data(node=id_,edge='comments',limit=100)
+                json_obj=get_json(response)
                 cmt_data=[]
                 some_cmt_data=json_obj['data']
                 # Recusively get replies to top-level comments
                 get_all_children(some_cmt_data)
                 cmt_data+=some_cmt_data
                 while len(json_obj['data'])>0:
-                    json_obj=api_bind.get_next_val(json_obj,page=True)
+                    response=api_bind.get_next_val(json_obj,page=True)
+                    json_obj=get_json(response)
                     if not json_obj:
                         break
                     some_cmt_data=json_obj['data']
