@@ -1,0 +1,96 @@
+#!/python27
+# -*- coding: utf-8 -*-
+# import the required modules and functions
+from __future__ import print_function
+import os
+import sys
+import codecs
+import numpy as np
+import time
+import gensim
+from collections import OrderedDict
+from gensim import corpora
+from collections import defaultdict
+from random import sample
+from math import ceil
+# set database (RC=Reddit,Fb=Facebook)
+database = "RC"
+# initialize a corpus
+documents = []
+# initialize a dictionary for storing indices related to each month and year
+timedict = dict()
+# path to the data (same folder as this code)
+file_path = os.path.abspath(sys.argv[0])
+path = os.path.dirname(file_path)
+## find preprocessed data
+for index,filename in enumerate(os.listdir(path)):
+    # for Reddit database
+    if database == "RC":
+        # if the file is relevant, open it
+        if "prep" in filename and "RC" in filename and "2006" in filename:
+            print(filename)
+            fin = codecs.open(filename,mode='r',encoding='utf8')
+            # create an entry in timedict to calculate # of relevant posts per month
+            timedict[filename[3:]] = 0
+            # fix the formatting of the data lines
+            for line in fin:
+                if line != "":
+                    timedict[filename[3:]] += 1 # document-counter
+                    line = line.encode('utf8','ignore')
+                    line = line.replace("\n","")
+                    line = line.replace("\r","")
+                    # add the line to our list of documents
+                    documents.append(line)
+print("finished reading the files at "+time.strftime('%l:%M%p'))
+fcount = open(database+"_monthly_count",'a+')
+print(OrderedDict(sorted(timedict.items())),end='\n',file=fcount)
+## create an evaluation set (5 percent of documents)
+num_comm = sum(timedict.itervalues()) # number of comments
+num_eval = int(ceil(0.05*num_comm)) # size of training set
+eval_set = sample(range(num_comm),num_eval) # choose training comments at random
+## split the documents into separate words
+texts = [[word for word in document.split()] for index,document in enumerate(documents) if index not in eval_set]
+eval_text = [[word for word in document.split()] for index,document in enumerate(documents) if index in eval_set]
+# remove words that appear only once
+frequency = defaultdict(int)
+for text in texts:
+    for token in text:
+        frequency[token] += 1
+texts = [[token for token in text if frequency[token] > 1] for text in texts]
+print("finished tokenizing at "+time.strftime('%l:%M%p'))
+## create the dictionary
+dictionary = corpora.Dictionary(texts)
+dictionary.filter_extremes(no_below=5, no_above=0.99, keep_n=200000, keep_tokens=None) # filter extremes
+dictionary.save("/Reddit_Dict.dict") # save it to file for future use
+print("finished creating the dictionary at "+time.strftime('%l:%M%p'))
+## create the doc-term matrix
+corpus = [dictionary.doc2bow(text) for text in texts]
+corpora.MmCorpus.serialize('/Reddit_Corpus.mm', corpus) # save matrix to file for future use
+print("finished creating the doc-term matrix at "+time.strftime('%l:%M%p'))
+## run the LDA
+Lda = gensim.models.ldamulticore.LdaMulticore
+ldamodel = Lda(corpus, workers = 3, num_topics=100, chunksize=10000, id2word = dictionary, iterations=1500)
+ldamodel.save("/Reddit_LDA.lda") # save output to file for future use
+print("finished running LDA at "+time.strftime('%l:%M%p'))
+# evaluate perplexity using a random subset of documents as evaluation set --> does not work
+# print("Log perplexity (using 10 percent of documents as evaluation set):")
+# print(Lda.log_perplexity(ldamodel,eval_text))
+## see the resulting topics
+output = Lda.show_topics(ldamodel, num_words=20, log=False, formatted=True)
+for topic in output:
+    print(topic)
+## to query a specific set of words:
+# query = [word1,word2,word3]
+# id2word = corpora.Dictionary()
+# _ = id2word.merge_with(corpus.id2word)
+# query = id2word.doc2bow(query)
+# ldamodel[query]
+# a = list(sorted(model[query], key=lambda x: x[1]))
+# print(a[0])
+# print(a[-1])
+# model.print_topic(a[0][0]) #least related
+# model.print_topic(a[0][-1]) #most related
+## Possibly useful functions
+# Lda.get_document_topics(ldamodel, minimum_probability=0.02)
+# Lda.get_topic_terms(topicid, topn=10)
+# Lda.get_term_topics(word_id, minimum_probability=None)
