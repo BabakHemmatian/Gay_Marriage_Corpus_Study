@@ -27,7 +27,7 @@ for index,filename in enumerate(os.listdir(path)):
     # for Reddit database
     if database == "RC":
         # if the file is relevant, open it
-        if "prep" in filename and "RC" in filename and "2006" in filename:
+        if "prep" in filename and "RC" in filename:
             print(filename)
             fin = codecs.open(filename,mode='r',encoding='utf8')
             # create an entry in timedict to calculate # of relevant posts per month
