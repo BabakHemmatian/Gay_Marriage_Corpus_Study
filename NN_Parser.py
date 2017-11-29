@@ -69,8 +69,6 @@ MAREQU = getFilterEquRegex()
 sent_detector = nltk.data.load('tokenizers/punkt/english.pickle')
 # initialize containers for number of comments and indices related to each month
 timedict = dict()
-# create a file to store the relevant indices for each month
-ccount = open("RC_Count_List.txt",'a+')
 ### parse data
 # timer
 print("Started parsing at " + time.strftime('%l:%M%p'))
@@ -83,6 +81,8 @@ for filename in sorted(os.listdir(path)):
         fin = bz2.BZ2File(filename,'r')
         # create a file to write the processed text to
         fout = open("nn_prep.txt",'a+')
+        # create a file to store the relevant indices for each month
+        ccount = open("RC_Count_List.txt",'a+')
         # every line is a comment
         for line in fin:
             # parse the json, and turn it to regular text
@@ -112,11 +112,12 @@ for filename in sorted(os.listdir(path)):
                 print("\n",end="",file=fout)
         # write the comment indices for each month to file
         print(counter,file=ccount)
+        # close the files to save the data
+        fin.close()
+        fout.close()
+        ccount.close()
         # timer
         print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
-# close the output files
-fout.close()
-ccount.close()
 # timer
 print("Finished parsing at " + time.strftime('%l:%M%p'))
 ### write the distribution of comments by month to file
