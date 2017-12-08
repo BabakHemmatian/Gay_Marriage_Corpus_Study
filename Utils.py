@@ -1,7 +1,9 @@
 #!/usr/bin/python27
 # -*- coding: utf-8 -*-
-### import the required modules and functions
 
+# NOTE: This file should be in the same directory as Combined_NN_Model.py or LDA_Model.py
+
+### import the required modules and functions
 
 from __future__ import print_function
 import tensorflow as tf
@@ -23,22 +25,24 @@ from random import sample
 from math import floor,ceil
 nltk.download('stopwords')
 nltk.download('punkt')
+nltk.download('wordnet')
 
-# Global Set keys
+### Global Set keys
+
 set_key_list = ['train','dev','test']
 indexes = {key: [] for key in set_key_list}
 sets    = {key: [] for key in set_key_list}
 lengths = {key: [] for key in set_key_list}
 Max     = {key: [] for key in set_key_list}
-Loss    = {key: [] for key in set_key_list}
-perplexity = {key: [] for key in set_key_list}
+vote     = {key: [] for key in set_key_list}
+V = OrderedDict({}) # vocabulary
 
-## define the preprocessing function to add padding and remove punctuation, special characters and stopwords
-def clean(text,stop,exclude):
+### define the preprocessing function to add padding and remove punctuation, special characters and stopwords (neural network)
+
+def NN_clean(text,stop):
     # check input arguments for valid type
-    assert type(text) is list or type(text) is str
+    assert type(text) is list or type(text) is str or type(text) is unicode
     assert type(stop) is set or type(stop) is list
-    assert type(exclude) is set or type(stop) is list
     # create a container for preprocessed sentences
     cleaned = []
     # iterate over the sentences
@@ -54,7 +58,9 @@ def clean(text,stop,exclude):
                 special_free = special_free+" "+word
         # remove stopwords
         stop_free = " ".join([i for i in special_free.split() if i not in stop])
-        # remove punctuation --> instead of removing, we want to separate them, then add a stop character after those that signal end of a sentence. We should be fine disregarding the comment boundaries. If not, we could add a special character to be learned there too
+        # determine the set of punctuations that should be removed
+        exclude = set(string.punctuation)
+        # remove punctuation
         no_punc = re.compile('|'.join(map(re.escape, exclude)))
         punc_free = no_punc.sub(' ',stop_free)
         # add sentence and end of comment padding
@@ -67,18 +73,54 @@ def clean(text,stop,exclude):
             cleaned[-1] = cleaned[-1]+" *STOP2*"
     return cleaned
 
+### define the preprocessing function to add padding and remove punctuation, special characters and stopwords (LDA)
 
-## define the relevance filters
+# NOTE: Since LDA doesn't care about sentence structure, unlike NN_clean, the entire comment should be fed into this function as a continuous string
+# NOTE: The Reddit dataset seems to encode the quote blocks as just new lines. Therefore, there is no way to get rid of quotes
+
+def LDA_clean(text,stop):
+    # check input arguments for valid type
+    assert type(text) is unicode or type(text) is str
+    assert type(stop) is set or type(stop) is list
+    # remove apostrophes and replace with space
+    text = text.replace("'"," ")
+    # remove special characters
+    special_free = ""
+    for word in text.lower().split():
+        # remove links
+        if "http" not in word and "www" not in word:
+            word = re.sub('[^A-Za-z0-9]+', ' ', word)
+            special_free = special_free+" "+word
+    # remove stopwords
+    stop_free = " ".join([i for i in special_free.split() if i not in stop])
+    # determine the set of punctuations that should be removed
+    exclude = set(string.punctuation)
+    # remove punctuation
+    no_punc = re.compile('|'.join(map(re.escape, exclude)))
+    punc_free = no_punc.sub(' ',stop_free)
+    # lemmatize
+    normalized = " ".join(nltk.stem.WordNetLemmatizer().lemmatize(word) for word in punc_free.split())
+    return normalized
+
+### define the relevance filters for gay marriage and marriage equality
+
 def getFilterBasicRegex():
     return re.compile("^(?=.*gay|.*homosexual|.*homophile|.*fag|.*faggot|.*fagot|.*queer|.*homo|.*fairy|.*nance|.*pansy|.*queen|.*LGBT|.*GLBT|.*same.sex|.*lesbian|.*dike|.*dyke|.*butch|.*sodom|.*bisexual)(?=.*marry|.*marri|.*civil union).*$", re.I)
 GAYMAR = getFilterBasicRegex()
+
 def getFilterEquRegex():
     return re.compile("^(?=.*marriage equality|.*equal marriage).*$", re.I)
 MAREQU = getFilterEquRegex()
 
-def NN_Parser(path,stop,exclude,vote_counting):
-    ## import the pre-trained PUNKT tokenizer for determining sentence boundaries
-    sent_detector = nltk.data.load('tokenizers/punkt/english.pickle')
+### define the parser
+
+# NOTE: Parses for LDA if NN = False
+
+def Parser(path,stop,vote_counting,NN):
+    # if parsing for a neural network
+    if NN == True:
+        ## import the pre-trained PUNKT tokenizer for determining sentence boundaries
+        sent_detector = nltk.data.load('tokenizers/punkt/english.pickle')
     # json parser
     decoder = json.JSONDecoder(encoding='utf-8')
     ## iterate over files in directory to preprocess the text and record the votes
@@ -93,9 +135,12 @@ def NN_Parser(path,stop,exclude,vote_counting):
             # open the file as a text file, in utf8 encoding
             fin = bz2.BZ2File(filename,'r')
             # create a file to write the processed text to
-            fout = open("nn_prep",'a+')
+            if NN == True: # if doing NN
+                fout = open("nn_prep",'a+')
+            else: # if doing LDA
+                fout = open("lda_prep",'a+')
             # if we want to record sign of the votes
-            if vote_counting == 1:
+            if vote_counting == True:
                 # create a file for storing whether a relevant comment has been upvoted or downvoted more often or neither
                 vote = open("votes",'a+')
             # create a file to store the relevant indices for each month
@@ -109,37 +154,61 @@ def NN_Parser(path,stop,exclude,vote_counting):
                 # filter comments by relevance to the topic
                 if len(GAYMAR.findall(body)) > 0 or len(MAREQU.findall(body)) > 0:
                     ## preprocess the comments
-                    # tokenize the sentences
-                    body = sent_detector.tokenize(body)
-                    # clean the the text,
-                    body = clean(body,stop,exclude)
+                    if NN == True:
+                        # tokenize the sentences
+                        body = sent_detector.tokenize(body)
+                        # clean the text for NN
+                        body = NN_clean(body,stop)
+                    else:
+                        # clean the text for LDA
+                        body = LDA_clean(body,stop)
                     # if the comment body is not empty after preprocessing
-                    if body != []:
-                        counter += 1 # update the counter
-                        # if we are interested in the sign of the votes
-                        if vote_counting == 1:
-                            # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
-                            print(np.sign(int(comment["score"])),end="\n",file=vote)
+                    if NN == True:
+                        if len(body) > 0:
+                            counter += 1 # update the counter
+                            # if we are interested in the sign of the votes
+                            if vote_counting == True:
+                                # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
+                                print(np.sign(int(comment["score"])),end="\n",file=vote)
+                                # record the number of documents by year and month
+                            created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
+                            if created_at not in timedict:
+                                timedict[created_at] = 1
+                            else:
+                                timedict[created_at] += 1
+                            for sen in body: # for each sentence in the comment
+                                # remove mid-comment lines and set encoding
+                                sen = sen.replace("\n","")
+                                sen = sen.encode("utf-8")
+                                # print the processed sentence to file
+                                print(" ".join(sen.split()), end=" ", file=fout)
+                            # ensure that each comment is on a separate line
+                            print("\n",end="",file=fout)
+                    else: # if doing LDA
+                        if body.strip() != "":
+                            counter += 1 # update the counter
+                            # if we are interested in the sign of the votes
+                            if vote_counting == True:
+                                # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
+                                print(np.sign(int(comment["score"])),end="\n",file=vote)
                             # record the number of documents by year and month
-                        created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
-                        if created_at not in timedict:
-                            timedict[created_at] = 1
-                        else:
-                            timedict[created_at] += 1
-                        for sen in body: # for each sentence in the comment
+                            created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
+                            if created_at not in timedict:
+                                timedict[created_at] = 1
+                            else:
+                                timedict[created_at] += 1
                             # remove mid-comment lines and set encoding
-                            sen = sen.replace("\n","")
-                            sen = sen.encode("utf-8")
-                            # print the processed sentence to file
-                            print(" ".join(sen.split()), end=" ", file=fout)
-                        # ensure that each comment is on a separate line
-                        print("\n",end="",file=fout)
+                            body = body.replace("\n","")
+                            body = body.encode("utf-8")
+                            # print the comment to file
+                            print(" ".join(body.split()), sep=" ",end="\n", file=fout)
             # write the monthly cummulative number of comments to file
             print(counter,file=ccount)
             # close the files to save the data
             fin.close()
             fout.close()
-            vote.close()
+            if NN == True:
+                vote.close()
             ccount.close()
             # timer
             print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
@@ -154,63 +223,73 @@ def NN_Parser(path,stop,exclude,vote_counting):
         print(month+" "+str(docs),end='\n',file=fcount)
     fcount.close
 
-### parse data
-def Parse_Rel_RC_Comments(path,stop,exclude,vote_counting, NN):
+### Function to call parser when needed and parse comments
+
+def Parse_Rel_RC_Comments(path,stop,vote_counting, NN):
     # check input arguments for valid type
-    if vote_counting != 0 and vote_counting != 1:
+    if type(vote_counting) is not bool:
         raise Exception('Invalid vote counting argument')
-    if NN != 0 and NN != 1:
+    if type(NN) is not bool:
         raise Exception('Invalid NN argument')
     assert type(path) is str
     assert type(stop) is set or type(stop) is list
-    assert type(exclude) is set or type(stop) is list
     # check the given path
     if not os.path.exists(path):
         raise Exception('Invalid path')
-
-    if Path(path+"/nn_prep").is_file():
+    # if preprocessed comments are available, ask if they should be rewritten
+    if (NN == True and Path(path+"/nn_prep").is_file()) or (NN == False and Path(path+"/lda_prep").is_file()):
         Q = raw_input("Preprocessed comments are already available. Do you wish to delete them and parse anew [Y/N]?")
         if Q == 'Y' or Q == 'y':
             # delete previous preprocessed data
-            os.remove(path+"/nn_prep")
+            if NN == True:
+                os.remove(path+"/nn_prep")
+                if Path(path+"/votes").is_file():
+                    os.remove(path+"/votes")
+            elif NN == False:
+                os.remove(path+"/lda_prep")
             if Path(path+"/RC_Count_List").is_file():
                 os.remove(path+"/RC_Count_List")
-            if Path(path+"/votes").is_file():
-                os.remove(path+"/votes")
             if Path(path+"/RC_Count_Dict").is_file():
                 os.remove(path+"/RC_Count_Dict")
 
+            # check for the presence of data files
             if not glob.glob(path+'/*.bz2'):
                 raise Exception('No data file found')
 
-            if NN == 1:
-                # timer
-                print("Started parsing at " + time.strftime('%l:%M%p'))
-                NN_Parser(path,stop,exclude,vote_counting)
+            # parse again
+            # timer
+            print("Started parsing at " + time.strftime('%l:%M%p'))
+            Parser(path,stop,vote_counting,NN)
 
         else:
             print("Operation aborted")
             if not Path(path+"/RC_Count_List").is_file():
                 raise Warning('Cummulative monthly counts not found. Please preprocess again')
-            if not Path(path+"/votes").is_file():
-                raise Warning('Votes not found. Please preprocess again')
+            if NN == True:
+                if not Path(path+"/votes").is_file():
+                    raise Warning('Votes not found. Please preprocess again')
             if not Path(path+"/RC_Count_Dict").is_file():
                 raise Warning('Monthly counts not found. Please preprocess again')
             pass
     else:
         if Path(path+"/RC_Count_List").is_file():
             os.remove(path+"/RC_Count_List")
-        if Path(path+"/votes").is_file():
-            os.remove(path+"/votes")
+        if NN == True:
+            if Path(path+"/votes").is_file():
+                os.remove(path+"/votes")
         if Path(path+"/RC_Count_Dict").is_file():
             os.remove(path+"/RC_Count_Dict")
 
-        if NN == 1:
-            # timer
-            print("Started parsing at " + time.strftime('%l:%M%p'))
-            NN_Parser(path,stop,exclude,vote_counting)
+        # check for the presence of data files
+        if not glob.glob(path+'/*.bz2'):
+            raise Exception('No data file found')
+
+        # timer
+        print("Started parsing at " + time.strftime('%l:%M%p'))
+        Parser(path,stop,vote_counting,NN)
 
 ### determine what percentage of the posts in each year was relevant
+
 def Rel_Counter(path):
 
     if not Path(path+"/RC_Count_Dict").is_file():
@@ -254,6 +333,8 @@ def Rel_Counter(path):
     print(sorted(perc_rel.items()),file=rel)
     rel.close
 
+### Load, calculate or re-calculate the percentage of relevant comments/year
+
 def Perc_Rel_RC_Comment(path):
     if Path(path+"/perc_rel").is_file():
         Q = raw_input("Calculated percentages are already available. Do you wish to delete them and count anew [Y/N]?")
@@ -266,6 +347,7 @@ def Perc_Rel_RC_Comment(path):
     else:
         Rel_Counter(path)
 
+### function to determine comment indices for new training, development and test sets
 
 def Create_New_Sets(path,training_fraction,timelist):
 
@@ -283,6 +365,10 @@ def Create_New_Sets(path,training_fraction,timelist):
     sets['dev']  = sample(remaining,num_dev) # choose development comments at random
     sets['test'] = [x for x in remaining if x not in sets['dev']] # use the rest as test set
 
+    # sort the indices based on position in nn_prep
+    for set_key in set_key_list:
+        sets[set_key] = sorted(list(sets[set_key]))
+
     # Check dev and test sets came out with right proportions
     assert (len(sets['dev']) - len(sets['test'])) <= 1
     assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
@@ -298,7 +384,7 @@ def Create_New_Sets(path,training_fraction,timelist):
     assert len(sets['dev']) - len(sets['test']) < 1
     assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
 
-
+### function for loading, calculating, or recalculating sets
 
 def Define_Sets(path,training_fraction):
 
@@ -354,10 +440,10 @@ def Define_Sets(path,training_fraction):
                                 sets[set_key].append(int(line))
                     sets[set_key] = np.asarray(sets[set_key])
 
-                    # ensure set sizes are correct
+                # ensure set sizes are correct
 
-                    assert len(sets['dev']) - len(sets['test']) < 1
-                    assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
+                assert len(sets['dev']) - len(sets['test']) < 1
+                assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
 
             # if the sets cannot be found, delete any current sets and create new sets
 
@@ -418,12 +504,15 @@ def Define_Sets(path,training_fraction):
 
             Create_New_Sets(path,training_fraction,timelist)
 
-def Index_Set(path,set_key,MaxVocab):
+### load or create vocabulary and load or create indexed versions of comments in sets
+
+def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
 
     # ensure the arguments have the correct type
 
     assert type(path) is str
     assert type(MaxVocab) is int
+    assert type(FrequencyFilter) is int
 
     # check the given path
 
@@ -450,7 +539,6 @@ def Index_Set(path,set_key,MaxVocab):
 
         if Path(path+"/dict").is_file():
             print("Loading dictionary from file")
-            V = OrderedDict({})
 
             with open("dict",'r') as f:
                 for line in f:
@@ -480,15 +568,14 @@ def Index_Set(path,set_key,MaxVocab):
 
     else: # if the indexed comments are not available, create them
 
-        unk_suffixes = ['ed', 's', 'ing', 'ly', 'er', 'ion', 'al', 'ous']
-
         if set_key == 'train':
 
             # timer
             print("Started creating the dictionary at " + time.strftime('%l:%M%p'))
 
             ## initialize the vocabulary with various UNKs
-            V = OrderedDict({"*STOP*":0,"*STOP2*":1,"*UNK*":2,"*UNKED*":3,"*UNKS*":4,"*UNKING*":5,"*UNKLY*":6,"*UNKER*":7,"*UNKION*":8,"*UNKAL*":9,"*UNKOUS*":10})
+
+            V.update({"*STOP2*":1,"*UNK*":2,"*UNKED*":3,"*UNKS*":4,"*UNKING*":5,"*UNKLY*":6,"*UNKER*":7,"*UNKION*":8,"*UNKAL*":9,"*UNKOUS*":10,"*STOP*":11})
 
         # read the dataset and index the relevant comments
 
@@ -497,42 +584,52 @@ def Index_Set(path,set_key,MaxVocab):
             if counter in sets[set_key]: # if it belongs in the set
                 comment = []
                 for word in comm.split(): # for each word
-                    if frequency[word] > 5: # filter non-frequent words
+                    if frequency[word] > FrequencyFilter: # filter non-frequent words
                         if word in V.keys(): # if the word is already in the vocabulary
                             comment.append(V[word]) # index it
                         elif set_key == 'train': # if the word is not in vocabulary and we are indexing the training set
                                 if len(V)-11 <= MaxVocab: # if the vocabulary still has room (not counting STOPs and UNKs)
-                                    V[word] = len(V) # give it an index
+                                    V[word] = len(V)+1 # give it an index (leave index 0 for padding)
                                     comment.append(V[word]) # append it to the list of words
 
                                 else: # if the vocabulary doesn't have room, assign the word to an UNK according to its suffix or lack thereof
-                                    for suffix in unk_suffixes: # check for any recognizable suffix
-                                        if word.endswith(suffix):
-                                            suffix_counter = 0
-                                            for key in V.iterkeys():
-                                                suffix_counter += 1
-                                                if suffix_counter <= 11:
-                                                    if suffix in key:
-                                                        comment.append(V[key])
-                                                        break
-                                                if suffix_counter > 11:
-                                                    break
-                                        else: # does not have any recognizable suffix
-                                            comment.append(2)
+                                    if word.endswith("ed"):
+                                        comment.append(3)
+                                    elif word.endswith("s"):
+                                        comment.append(4)
+                                    elif word.endswith("ing"):
+                                        comment.append(5)
+                                    elif word.endswith("ly"):
+                                        comment.append(6)
+                                    elif word.endswith("er"):
+                                        comment.append(7)
+                                    elif word.endswith("ion"):
+                                        comment.append(8)
+                                    elif word.endswith("al"):
+                                        comment.append(9)
+                                    elif word.endswith("ous"):
+                                        comment.append(10)
+                                    else: # if the word doesn't have any easily identifiable suffix
+                                        comment.append(2)
                         else: # the word is not in vocabulary and we are not indexing the training set
-                            for suffix in unk_suffixes: # check for any recognizable suffix
-                                if word.endswith(suffix):
-                                    suffix_counter = 0
-                                    for key in V.iterkeys():
-                                        suffix_counter += 1
-                                        if suffix_counter <= 11:
-                                            if suffix in key:
-                                                comment.append(V[key])
-                                                break
-                                        if suffix_counter > 11:
-                                            break
-                                else: # does not have any recognizable suffix
-                                    comment.append(2)
+                            if word.endswith("ed"):
+                                comment.append(3)
+                            elif word.endswith("s"):
+                                comment.append(4)
+                            elif word.endswith("ing"):
+                                comment.append(5)
+                            elif word.endswith("ly"):
+                                comment.append(6)
+                            elif word.endswith("er"):
+                                comment.append(7)
+                            elif word.endswith("ion"):
+                                comment.append(8)
+                            elif word.endswith("al"):
+                                comment.append(9)
+                            elif word.endswith("ous"):
+                                comment.append(10)
+                            else: # if the word doesn't have any easily identifiable suffix
+                                comment.append(2)
                 indexes[set_key].append(comment)
         # save the vocabulary to file
         if set_key == 'train':
@@ -552,216 +649,45 @@ def Index_Set(path,set_key,MaxVocab):
 
         assert len(indexes[set_key]) == len(sets[set_key])
     # timer
-    print("Finished indexing the"+set_key+" set at " + time.strftime('%l:%M%p'))
-    if set_key == 'train':
-        return V
+    print("Finished indexing the "+set_key+" set at " + time.strftime('%l:%M%p'))
 
-def Lang_Model_NN(V,learning_rate,batchSz,embedSz,hiddenSz,ff1Sz,ff2Sz,keepP,alpha,perf):
-    ## record the hyperparameters
-    print("Learning_rate = " + str(learning_rate),file=perf)
-    print("Batch size = " + str(batchSz),file=perf)
-    print("Embedding size = " + str(embedSz),file=perf)
-    print("Recurrent layer size = " + str(hiddenSz),file=perf)
-    print("1st feedforward layer size = " + str(ff1Sz),file=perf)
-    print("2nd feedforward layer size = " + str(ff2Sz),file=perf)
-    print("Dropout rate = " + str(1 - keepP),file=perf)
-    print("L2 regularization constant = " + str(alpha),file=perf)
-    ### set up the computation graph ###
-    ### create placeholders for input, output
-    inpt = tf.placeholder(tf.int32, shape=[None,None])
-    answr = tf.placeholder(tf.int32, shape=[None,None])
-    loss_weight = tf.placeholder(tf.float32, shape=[None,None])
-    DOutRate = tf.placeholder(tf.float32)
-    ### set up the variables
-    # initial embeddings
-    E = tf.Variable(tf.random_normal([len(V), embedSz], stddev = 0.1))
-    # look up the embeddings
-    embed = tf.nn.embedding_lookup(E, inpt)
-    sum_weights = tf.nn.l2_loss(embed)
-    # define the recurrent layer (Gated Recurrent Unit)
-    rnn= tf.contrib.rnn.GRUCell(hiddenSz)
-    initialState = rnn.zero_state(batchSz, tf.float32)
-    output, nextState = tf.nn.dynamic_rnn(rnn, embed,initial_state=initialState)
-    sum_weights = sum_weights + tf.nn.l2_loss(nextState)
-    # create weights and biases for three feedforward layers
-    W1 = tf.Variable(tf.random_normal([hiddenSz,ff1Sz], stddev=0.1))
-    sum_weights = sum_weights + tf.nn.l2_loss(W1)
-    b1 = tf.Variable(tf.random_normal([ff1Sz], stddev=0.1))
-    sum_weights = sum_weights + tf.nn.l2_loss(b1)
-    l1logits = tf.nn.relu(tf.tensordot(output,W1,[[2],[0]])+b1)
-    l1Output = tf.nn.dropout(l1logits,DOutRate) # apply dropout
-    W2 = tf.Variable(tf.random_normal([ff1Sz,ff2Sz], stddev=0.1))
-    sum_weights = sum_weights + tf.nn.l2_loss(W2)
-    b2 = tf.Variable(tf.random_normal([ff2Sz], stddev=0.1))
-    sum_weights = sum_weights + tf.nn.l2_loss(b2)
-    l2Output = tf.nn.relu(tf.tensordot(l1Output,W2,[[2],[0]])+b2)
-    W3 = tf.Variable(tf.random_normal([ff2Sz,len(V)], stddev=0.1))
-    sum_weights = sum_weights + tf.nn.l2_loss(W3)
-    b3 = tf.Variable(tf.random_normal([len(V)], stddev=0.1))
-    sum_weights = sum_weights + tf.nn.l2_loss(b3) # add to loss to get L2 regularization
-    ### calculate loss
-    # calculate logits
-    logits = tf.tensordot(l2Output,W3,[[2],[0]])+b3
-    # calculate sequence cross-entropy loss
-    xEnt = tf.contrib.seq2seq.sequence_loss(logits=logits,targets=answr,weights=loss_weight)
-    loss = tf.reduce_mean(xEnt) # + (alpha * sum_weights)
-    ### training with AdamOptimizer
-    train = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+### turn votes into one-hot vectors
 
-def Test_NN(batchSz,Max_l,keepP,output_path,perf,set_key):
-    Loss[set_key] = 0 # reset the loss
-    # initialize vectors for feeding data and desired output
-    inputs = np.zeros([batchSz,Max_l])
-    answers = np.zeros([batchSz,Max_l])
-    loss_weights = np.zeros([batchSz,Max_l])
-    j = 0 # batch comment counter
-    p = 0 # batch counter
-    for i in range(len(indexes[set_key])):
-        inputs[j,:lengths[set_key][i]] = indexes[set_key][i]
-        answers[j,:lengths[set_key][i]-1] = indexes[set_key][i][1:]
-        loss_weights[j,:lengths[set_key][i]] = 1
-        j += 1
-        if j == batchSz - 1:
-            # train on the examples if the set is the training set
-            if set_key == 'train':
-                _,outputs,next,Loss[set_key] = sess.run([train,output,nextState,loss],feed_dict={inpt:inputs,answr:answers,loss_weight:loss_weights,DOutRate:keepP})
-            else: # if the set is not the training set
-                Loss[set_key] = sess.run(loss,feed_dict={inpt:inputs,answr:answers,loss_weight:loss_weights,DOutRate:1})
-            j = 0
-            p += 1
-            inputs = np.zeros([batchSz,Max_l])
-            answers = np.zeros([batchSz,Max_l])
-            weighting = np.zeros([batchSz,Max_l])
-            state = next # update the GRU state
-            Loss+=Losses # add this batch's loss to total loss
-        if set_key == 'train':
-            if (i+1) % 10000 == 0 or i == len(indexed_train) - 1: # every 10000 comments or at the end of training, save the weights
-                # retrieve learned weights
-                embeddings,weights1,weights2,weights3,biases1,biases2,biases3 = sess.run([E,W1,W2,W3,b1,b2,b3])
-                embeddings = np.asarray(embeddings)
-                outputs = np.asarray(outputs)
-                weights1 = np.asarray(weights1)
-                weights2 = np.asarray(weights2)
-                weights3 = np.asarray(weights3)
-                biases1 = np.asarray(biases1)
-                biases2 = np.asarray(biases2)
-                biases3 = np.asarray(biases3)
-                # define a list of the retrieved variables
-                weights = ["embeddings","state","weights1","weights2","weights3","biases1","biases2","biases3"]
-                # write them to file
-                for variable in weights:
-                    np.savetxt(output_path+"/"+variable, eval(variable))
-    # calculate training set perplexity
-    train_perplexity[k] = np.exp(Loss/p)
-    print("Perplexity on the " + set_key + "set (Epoch " +str(k+1)+"): "+ str(perplexity[set_key][k]))
-    print("Perplexity on the " + set_key + "set (Epoch " +str(k+1)+"): "+ str(perplexity[set_key][k]),file=perf)
-    return
+def One_Hot_Vote(vote_list):
+    one_hot_vote = []
+    for sign in vote_list:
+        if int(sign) == -1:
+            one_hot_vote.append([1,0,0])
+        elif int(sign) == 0:
+            one_hot_vote.append([0,1,0])
+        elif int(sign) == 1:
+            one_hot_vote.append([0,0,1])
+        else:
+            raise Exception('Votes could not be appended')
+    return one_hot_vote
 
-### training the network ###
-def Train_Test_NN(epochs, batchSz,keepP,output_path, perf, early_stopping):
+### import the correct labels for comment votes
 
-    assert early_stopping == 1 or early_stopping == 0
+def Get_Votes(path):
+    if Path(path+"/votes").is_file():
+        for set_key in set_key_list:
+            vote[set_key] = []
+        with open("votes",'r') as f:
+            for index,sign in enumerate(f):
+                sign = sign.strip()
+                match_found = 0
+                for set_key in set_key_list:
+                    if index in sets[set_key]:
+                        vote[set_key].append(sign)
+                        match_found += 1
+                if match_found == 0:
+                    raise Exception('Votes could not be read from file')
+        assert len(indexes['train']) == len(vote['train'])
+        assert len(indexes['dev']) == len(vote['dev'])
+        assert len(indexes['test']) == len(vote['test'])
+    else:
+        raise Exception('Labels for the sets could not be found')
 
-    ### create the session and initialize variables
-
-    config = tf.ConfigProto(device_count = {'GPU': 0}) # Use only CPU (large matrices)
-    sess = tf.Session(config=config)
-    sess.run(tf.global_variables_initializer())
-    state = sess.run(initialState)
-    ## initialize vectors to store set perplexities
     for set_key in set_key_list:
-        perplexity[set_key] = np.empty(epochs)
-    ### train the network
-    ## create a list of training comment lengths
-    for set_key in set_key_list:
-        for i,x in enumerate(indexes[set_key]):
-            lengths.append(len(indexes[set_key][i]))
-        Max[set_key] = max(lengths[set_key]) # maximum length of a comment in this set
-    Max_l = max(Max['train'],Max['dev'],Max['test']) # max length of a comment in the whole dataset
-    # for each epoch
-    print("Number of epochs: "+str(epochs))
-    print("Number of epochs: "+str(epochs),file=perf)
-    k = 0 # epoch counter
-    # timer
-    print("Started epoch "+str(k+1)+" at "+time.strftime('%l:%M%p'))
-    ## train on the training set and calculate perplexity on all sets
-    for set_key in set_key_list:
-
-        Test_NN(batchSz,Max_l,keepP,output_path,perf,set_key)
-
-        if set_key == 'dev':
-            if early_stopping == 1:
-                if perplexity[set_key][k] > perplexity[set_key][k-1]:
-                    k == epochs - 1
-    if k == epochs - 1:
-        pass
-
-
-
-    #     ## test the network on development set
-    #     Devloss = 0 # reset the loss
-    #     # initialize vectors for feeding data and desired output
-    #     inputs = np.zeros([batchSz,Max_l])
-    #     answers = np.zeros([batchSz,Max_l])
-    #     weighting = np.zeros([batchSz,Max_l])
-    #     j = 0 # batch comment counter
-    #     p = 0 # batch counter
-    #     for i in range(len(indexed_dev)): # for each comment
-    #         inputs[j,:dev_lengths[i]] = indexed_dev[i]
-    #         if len(indexed_dev[i]) == 1:
-    #             continue
-    #         else:
-    #             answers[j,:dev_lengths[i]-1] = indexed_dev[i][1:]
-    #         weighting[j,:dev_lengths[i]] = 1
-    #         j += 1
-    #         if j == batchSz - 1:
-    #             # calculate loss
-    #             DevLoss = sess.run(loss,feed_dict={inpt:inputs,answr:answers,loss_weight:weighting,DOutRate:1})
-    #             Devloss+=DevLoss # add this set of batches' loss to total loss
-    #             j = 0
-    #             p += 1
-    #             inputs = np.zeros([batchSz,Max_l])
-    #             answers = np.zeros([batchSz,Max_l])
-    #             weighting = np.zeros([batchSz,Max_l])
-    #     # calculate development set perplexity
-    #     dev_perplexity[k] = np.exp(Devloss/p)
-    #     print("Perplexity on the development set (Epoch " +str(k+1)+"): "+ str(dev_perplexity[k]))
-    #     print("Perplexity on the development set (Epoch " +str(k+1)+"): "+ str(dev_perplexity[k]),file=perf)
-    #     ## if development set perplexity is increasing, stop training to prevent overfitting
-    #     if k != 0 and dev_perplexity[k] > dev_perplexity[k-1]:
-    #         break
-    # # timer
-    # print("Finished training at " + time.strftime('%l:%M%p'))
-    # ### test the network on test set ###
-    # Testloss = 0 # initialize loss
-    # # initialize vectors for feeding data and desired output
-    # inputs = np.zeros([batchSz,Max_l])
-    # answers = np.zeros([batchSz,Max_l])
-    # weighting = np.zeros([batchSz,Max_l])
-    # j = 0 # batch comment counter
-    # p = 0 # batch counter
-    # for i in range(len(indexed_test)):
-    #     inputs[j,:test_lengths[i]] = indexed_test[i]
-    #     if len(indexed_test[i]) == 1:
-    #         continue
-    #     else:
-    #         answers[j,:test_lengths[i]-1] = indexed_test[i][1:]
-    #     weighting[j,:test_lengths[i]] = 1
-    #     j += 1
-    #     if j == batchSz - 1:
-    #         # calculate loss
-    #         testLoss = sess.run(loss,feed_dict={inpt:inputs,answr:answers,loss_weight:weighting,DOutRate:1})
-    #         Testloss+=testLoss # add this set of batches' loss to total loss
-    #         j = 0
-    #         p += 1
-    #         inputs = np.zeros([batchSz,Max_l])
-    #         answers = np.zeros([batchSz,Max_l])
-    #         weighting = np.zeros([batchSz,Max_l])
-    # # calculate test set perplexity
-    # test_perplexity = np.exp(Testloss/p)
-    # print("Perplexity on the test set:" + str(test_perplexity))
-    # print("Perplexity on the test set:" + str(test_perplexity),file=perf)
-    # # timer
-    # print("Finishing time:" + time.strftime('%l:%M%p'))
-    # # close the performance file
-    # perf.close()
+        vote[set_key] = One_Hot_Vote(vote[set_key])
+    return vote['train'],vote['dev'],vote['test']
