@@ -88,7 +88,7 @@ stop = set(nltk.corpus.stopwords.words('english'))
 
 ## NOTE: If NN = False, will pre-process data for LDA
 
-Parse_Rel_RC_Comments(path,stop,vote_counting=True,NN=True)
+Parse_Rel_RC_Comments(path,stop,vote_counting=True,NN=True,write_original=False)
 
 ### call the function for calculating the percentage of relevant comments
 
@@ -101,9 +101,11 @@ Perc_Rel_RC_Comment(path)
 
 training_fraction = 0.80 # fraction of the data that is used for training
 
-## Determine the comments that will comprise each set
+## Determine the comments that will comprise various sets
 
-Define_Sets(path,training_fraction)
+# NOTE: [1 - training_fraction] fraction of the dataset will be divided randomly and equally into evaluation and test sets
+
+Define_Sets(path,training_fraction,NN=True)
 
 ## Read and index the content of comments in each set
 
