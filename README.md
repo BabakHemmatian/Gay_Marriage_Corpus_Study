@@ -16,7 +16,7 @@ The code is written to work with [a pre-existing corpus composed of all posts on
 
 ### Topic Modeling
 
-You can set hyperparameters and use Latent Dirichlet Allocation (LDA) to create and examine topic models of the corpus using [Reddit_LDA_Analysis.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Reddit_LDA_Analysis.py). This file should be in the same directory as [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py). 
+You can set hyperparameters and use Latent Dirichlet Allocation (LDA) to create and examine topic models of the corpus using [Reddit_LDA_Analysis.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Reddit_LDA_Analysis.py). Functions for determining top topics, temporal trends and sampling top comments associated with each topic are included. This file should be in the same directory as [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py). 
 
 ### Recurrent Neural Networks
 
