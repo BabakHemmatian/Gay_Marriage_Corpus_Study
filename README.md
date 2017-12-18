@@ -12,7 +12,7 @@ This repository holds Python code that can be used to extract information about 
 
 ### Dataset
 
-The code is written to work with a pre-existing corpus composed of all posts on Reddit from 2006 until the present (Accessible via: http://files.pushshift.io/reddit/comments/). This compressed corpus ignores hierarchical associations between comments. Sample files from the dataset have been included in the repository and can be recognized by the format RC_YYYY_MM.bz2. 
+The code is written to work with [a pre-existing corpus composed of all posts on Reddit from 2006 until the present](http://files.pushshift.io/reddit/comments/). This compressed corpus ignores hierarchical associations between comments. Sample files from the dataset have been included in the repository and can be recognized by the format RC_YYYY_MM.bz2. 
 
 ### Topic Modeling
 
