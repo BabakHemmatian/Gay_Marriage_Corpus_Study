@@ -424,7 +424,7 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original):
         print("Started parsing at " + time.strftime('%l:%M%p'))
         Parser(path,stop,vote_counting,NN,write_original)
 
-### determine what percentage of the posts in each year was relevant based on filters
+### determine what percentage of the posts in each year was relevant based on content filters
 
 # NOTE: Requires total comment counts (RC_Count_Total) from http://files.pushshift.io/reddit/comments/
 # NOTE: Requires monthly relevant counts from parser or disk
@@ -1027,10 +1027,10 @@ def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
         dictionary.filter_extremes(no_below=no_below, no_above=no_above, keep_n=MaxVocab) # filter extremes
         dictionary.save(path+"/LDA_Reddit_Dict.dict") # save dictionary to file for future use
 
+        ## create the Bag of Words (BOW) datasets
 
-        corpus = [dictionary.doc2bow(text) for text in texts] # index the corpus
-        eval_comments = [dictionary.doc2bow(text) for text in eval_comments] # index the evaluation set
-
+        corpus = [dictionary.doc2bow(text) for text in texts] # turn training comments into BOWs
+        eval_comments = [dictionary.doc2bow(text) for text in eval_comments] # turn evaluation comments into BOWs
         gensim.corpora.MmCorpus.serialize(path+'/LDA_Reddit_Corpus.mm', corpus) # save indexed data to file for future use (overwrites any previous versions)
         gensim.corpora.MmCorpus.serialize(path+'/LDA_Reddit_Eval.mm', eval_comments) # save the evaluation set to file
 
@@ -1231,7 +1231,7 @@ def Get_Indexed_Dataset(path,cumm_rel_year):
 
 ### Topic Contribution (threaded) ###
 
-### prints information about multiprocessing the current task
+### prints information about multiprocessing or threading in the current task
 
 def info(title):
 
@@ -1263,7 +1263,7 @@ def info(title):
 #                 term_topics = ldamodel.get_term_topics(dictionary.token2id[indexed_comment[1].strip()]) # get topic distribution for the word based on trained model
 #                 if len(term_topics) != 0: # if a topic with non-trivial probability is found
 #                     topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0] # find the most likely topic for that word
-#                     dxt[0,topic_asgmt-1] += 1 # record the topic assignment
+#                     dxt[0,topic_asgmt] += 1 # record the topic assignment
 #                     analyzed_comment_length += 1 # update comment word counter
 #
 #         else: # if comment consists of more than one word
@@ -1273,7 +1273,7 @@ def info(title):
 #                     term_topics = ldamodel.get_term_topics(dictionary.token2id[word])
 #                     if len(term_topics) != 0:
 #                         topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
-#                         dxt[0,topic_asgmt-1] += 1
+#                         dxt[0,topic_asgmt] += 1
 #                         analyzed_comment_length += 1
 #
 #         lock.acquire()
@@ -1327,8 +1327,6 @@ def info(title):
 #     thread_comments = {}
 #     for i in range(num_threads):
 #         thread_comments[i] = [comment for comment in indexed_dataset if comment[0] in thread_sets[i]]
-#     # thread1_dataset = [comment for comment in indexed_dataset if comment[0] % 2 == 1]
-#     # thread2_dataset = [comment for comment in indexed_dataset if comment[0] % 2 == 0]
 #
 #     threads = {}
 #     for i in range(num_threads):
@@ -1347,10 +1345,11 @@ def info(title):
 #
 #     return yr_topic_cont_threaded
 
+## Topic Contribution (Multicore) ###
 
-### Topic Contribution (Multicore) ###
+# NOTE: Uses global vectors shared between processes. Slower than the version that comes next
 
-### Define a class of vectors in basic C that will be shared between multi-core prcoesses for calculating topic contribution
+## Define a class of vectors in basic C that will be shared between multi-core prcoesses for calculating topic contribution
 
 class Shared_Contribution_Array(object):
 
@@ -1392,8 +1391,6 @@ class Shared_Counter(object):
 
 ### Define a function that retrieves the most likely topic for each word in a comment and calculates
 
-# NOTE: Topics in Gensim use Python indexing (indices start at 0)
-
 def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
 
     # info('function Topic_Asgmt_Retriever') ## uncomment if you wish to observe which worker is processing a specific comment
@@ -1412,7 +1409,7 @@ def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
                 # find the most likely topic for that word according to the trained model
                 topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
 
-                dxt[topic_asgmt-1,0] += 1 # record the topic assignment
+                dxt[topic_asgmt,0] += 1 # record the topic assignment
                 analyzed_comment_length += 1 # update word counter
 
     else: # if comment consists of more than one word
@@ -1424,7 +1421,7 @@ def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
                     # find the most likely topic for that word according to the trained model
                     topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
 
-                    dxt[topic_asgmt-1,0] += 1 # record the topic assignment
+                    dxt[topic_asgmt,0] += 1 # record the topic assignment
                     analyzed_comment_length += 1 # update word counter
 
     if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
@@ -1499,6 +1496,120 @@ def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_y
     print("Finished calculating topic contributions at "+time.strftime('%l:%M%p'))
 
     return yearly_output,indexed_dataset
+
+# ### Function for Calculating Topic Contribution ###
+#
+# # NOTE: Topics in Gensim use Python indexing (indices start at 0)
+#
+# def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
+#
+#     # info('function Topic_Asgmt_Retriever') ## uncomment if you wish to observe which worker is processing a specific comment
+#
+#     ## initialize needed vectors
+#
+#     dxt = np.zeros([num_topics,1]) # a vector for the normalized contribution of each topic to the comment
+#     analyzed_comment_length = 0 # a counter for the number of words in a comment for which the model has predictions
+#     no_predictions = 0 # initialize a binary variable for recording whether the model has predictions for a certain comment
+#
+#     ## for each word in the comment:
+#
+#     if len(indexed_comment[1].strip().split()) == 1: # if comment only consists of one word after preprocessing
+#         if indexed_comment[1].strip() in dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
+#             term_topics = ldamodel.get_term_topics(dictionary.token2id[indexed_comment[1].strip()]) # get topic distribution for the word based on trained model
+#             if len(term_topics) != 0: # if a topic with non-trivial probability is found
+#                 # find the most likely topic for that word according to the trained model
+#                 topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
+#
+#                 dxt[topic_asgmt,0] += 1 # record the topic assignment
+#                 analyzed_comment_length += 1 # update word counter
+#
+#     else: # if comment consists of more than one word
+#         for word in indexed_comment[1].strip().split(): # for each word, do the same as above
+#             if word in dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
+#                 # find the most likely topic according to the trained model
+#                 term_topics = ldamodel.get_term_topics(dictionary.token2id[word]) # get topic distribution for the word based on trained model
+#                 if len(term_topics) != 0: # if a topic with non-trivial probability is found
+#                     # find the most likely topic for that word according to the trained model
+#                     topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
+#
+#                     dxt[topic_asgmt,0] += 1 # record the topic assignment
+#                     analyzed_comment_length += 1 # update word counter
+#
+#     if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
+#
+#         dxt = (float(1) / float(analyzed_comment_length)) * dxt # normalize the topic contribution using comment length
+#
+#     else: # if the model had no reasonable topic proposal for any of the words in the comment
+#
+#         no_predictions = 1 # update the no_predictions counter
+#
+#     return (dxt,indexed_comment[2],no_predictions)
+#
+# ### Define the main function for multi-core calculation of topic contributions
+#
+# def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_year,cumm_rel_year,num_topics):
+#
+#     # timer
+#     print("Started calculating topic contribution at " + time.strftime('%l:%M%p'))
+#
+#     ## check for the existence of the preprocessed dataset
+#
+#     if not Path(path+'/lda_prep').is_file():
+#         raise Exception('The preprocessed data could not be found')
+#
+#     ## initialize a dictionary for yearly topic contributions
+#
+#     Yearly_Running_Sums = {}
+#     no_predictions_count = {}
+#
+#     ## Create shared counters for comments for which the model has no reasonable prediction whatsoever
+#
+#     for i in range(len(cumm_rel_year)):
+#         Yearly_Running_Sums[i] = np.zeros([num_topics,1])
+#         no_predictions_count[i] = 0
+#
+#     ## read and index comments
+#
+#     indexed_dataset = Get_Indexed_Dataset(path,cumm_rel_year)
+#
+#     ## define the function for spawning processes to perform the calculations in parallel
+#
+#     def testfunc(indexed_dataset,dictionary,ldamodel,num_topics):
+#         pool = multiprocessing.Pool(processes=CpuInfo())
+#         func = partial(Topic_Asgmt_Retriever_Multi, dictionary=dictionary,ldamodel=ldamodel,num_topics=num_topics)
+#         results = pool.map(func=func,iterable=indexed_dataset)
+#         pool.close()
+#         pool.join()
+#         return results
+#
+#     ## call the multiprocessing function on the dataset
+#
+#     results = testfunc(indexed_dataset,dictionary,ldamodel,num_topics)
+#
+#     ## Add comment-specific topic contributions to the relevant yearly sum
+#
+#     for comment in results: # for each comment
+#         Yearly_Running_Sums[comment[1]] = Yearly_Running_Sums[comment[1]] + comment[0]
+#         # update the counter for comments for which the model had no reasonable prediction
+#         no_predictions_count[comment[1]] += comment[2]
+#
+#     # normalize contributions using the number of documents per year
+#
+#     yearly_output = []
+#     for i in range(len(cumm_rel_year)):
+#         Yearly_Running_Sums[i] = ( float(1) / (float(relevant_year[i]) - no_predictions_count[i] )) * Yearly_Running_Sums[i]
+#         yearly_output.append(Yearly_Running_Sums[i])
+#
+#     yearly_output = np.asarray(yearly_output)
+#
+#     # save the yearly topic contribution matrix to disk
+#
+#     np.savetxt(output_path+"/yr_topic_cont", yearly_output) # save the topic contribution matrix to file
+#
+#     # timer
+#     print("Finished calculating topic contributions at "+time.strftime('%l:%M%p'))
+#
+#     return yearly_output,indexed_dataset
 
 ### Function that checks for a topic contribution matrix on file and calls for its calculation if there is none
 
@@ -1696,7 +1807,7 @@ def Top_Comment_Indices(theta,report,sample_comments):
 
 # IDEA: Should add the possibility of sampling from specific year(s)
 
-def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop):
+def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_rel_year):
 
     # timer
     print("Started sampling top comments at " + time.strftime('%l:%M%p'))
@@ -1713,6 +1824,7 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop):
 
         # counting the number of all processed comments
         counter = 0
+        year_counter = 0 # the first year in the corpus (2006)
 
         # check for the presence of data files
         if not glob.glob(path+'/*.bz2'):
@@ -1750,11 +1862,19 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop):
                         if body.strip() != "":
 
                             counter += 1 # update the counter
+
+                            # update year counter if need be
+                            if counter-1 >= cumm_rel_year[year_counter]:
+                                year_counter += 1
+
                             if counter-1 in sampled_indices: # see if the comment is among the sampled ones
 
                                 # remove mid-comment lines and set encoding
                                 original_body = original_body.replace("\n","")
                                 original_body = original_body.encode("utf-8")
+
+                                # print relevant year to file
+                                print('Year: '+str(2006+year_counter),file=fout)
 
                                 # print the topic to file
                                 itemindex = np.where(sampled_indices==counter-1) # determine which top topic the comment belongs to
@@ -1777,8 +1897,18 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop):
 
         with open(path+'/original_comm','a+') as fin, open(output_path+'/sampled_comments','a+') as fout: # determine the I/O files
 
+            year_counter = 0 # initialize a counter for the comment's year
+
             for comm_index,comment in enumerate(fin): # iterate over the original comments
+
                 if comm_index in sampled_indices: # see if the comment is among the sampled ones
+
+                    # update the year counter if need be
+                    if comm_index >= cumm_rel_year[year_counter]:
+                        year_counter += 1
+
+                    # print the relevant year to file
+                    print('Year: '+str(2006+year_counter),file=fout)
 
                     # print the topic to output file
                     itemindex = np.where(sampled_indices==comm_index) # determine which top topic the comment belongs to
