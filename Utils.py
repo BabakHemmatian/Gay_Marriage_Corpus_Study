@@ -47,6 +47,32 @@ Max     = {key: [] for key in set_key_list}
 vote     = {key: [] for key in set_key_list} # for NN
 V = OrderedDict({}) # vocabulary
 
+# Year/month combinations to get Reddit data for
+DATES=[]
+
+months=range(1,13)
+years=range(2006,2018)
+for year in years:
+    for month in months:
+        if year==2017 and month==10:
+            break
+        DATES.append((year,month))
+
+# Raw Reddit data filename format
+def _get_rc_filename(yr,mo):
+    if len(str(mo))<2:
+        mo='0{}'.format(mo)
+    assert len(str(yr))==4
+    assert len(str(mo))==2
+    return 'RC_{}-{}.bz2'.format(yr, mo)
+
+# Download RC data.
+def download(year, month, path):
+    BASE_URL='https://files.pushshift.io/reddit/comments/'
+    url=BASE_URL+_get_rc_filename(year, month)
+    print ('Sending request to {}.'.format(url))
+    os.system('cd {} && wget {}'.format(path, url))
+
 ### define the preprocessing function to add padding and remove punctuation, special characters and stopwords (neural network)
 
 def NN_clean(text,stop):
@@ -144,7 +170,8 @@ MAREQU = getFilterEquRegex()
 # NOTE: Parses for LDA if NN = False
 # NOTE: Saves the text of the non-processed comment to file as well if write_original = True
 
-def Parser(path,stop,vote_counting,NN,write_original):
+def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
+           clean_raw=True):
 
     if NN == True: # if parsing for a neural network
 
@@ -164,142 +191,150 @@ def Parser(path,stop,vote_counting,NN,write_original):
 
     processed_counter = 0 # counting the number of all processed comments
 
-    for filename in sorted(os.listdir(path)): # iterate through the directory
+    for year, month in DATES:
+        filename=_get_rc_filename(year, month)
 
-        # only include relevant files
-        if os.path.splitext(filename)[1] == '.bz2' and 'RC_' in filename:
+        if not filename in os.listdir(path) and download_raw:
+            download(year, month, path)
 
-            ## prepare files
+        elif not filename in os.listdir(path):
+            print ('Can\'t find data for {}/{}. Skipping.'.format(month, year))
+            continue
 
-            # open the file as a text file, in utf8 encoding
-            fin = bz2.BZ2File(filename,'r')
+        ## prepare files
 
-            # create a file to write the processed text to
-            if NN == True: # if doing NN
-                fout = open(path+"/nn_prep",'a+')
-            else: # if doing LDA
-                fout = open(path+"/lda_prep",'a+')
+        # open the file as a text file, in utf8 encoding
+        fin = bz2.BZ2File(path+'/'+filename,'r')
 
-            # create a file if we want to write the original comments and their indices to disk
-            if write_original == True:
-                foriginal = open(path+"/original_comm",'a+')
-                main_indices = open(path+'/original_indices','a+')
+        # create a file to write the processed text to
+        if NN == True: # if doing NN
+            fout = open(path+"/nn_prep",'a+')
+        else: # if doing LDA
+            fout = open(path+"/lda_prep",'a+')
 
-            # if we want to record sign of the votes
-            if vote_counting == True:
-                # create a file for storing whether a relevant comment has been upvoted or downvoted more often or neither
-                vote = open(path+"/votes",'a+')
+        # create a file if we want to write the original comments and their indices to disk
+        if write_original == True:
+            foriginal = open(path+"/original_comm",'a+')
+            main_indices = open(path+'/original_indices','a+')
 
-            # create a file to store the relevant cummulative indices for each month
-            ccount = open(path+"/RC_Count_List",'a+')
+        # if we want to record sign of the votes
+        if vote_counting == True:
+            # create a file for storing whether a relevant comment has been upvoted or downvoted more often or neither
+            vote = open(path+"/votes",'a+')
 
-            ## read data
+        # create a file to store the relevant cummulative indices for each month
+        ccount = open(path+"/RC_Count_List",'a+')
 
-            for line in fin: # for each comment
+        ## read data
 
-                main_counter += 1 # update the general counter
+        for line in fin: # for each comment
 
-                # parse the json, and turn it into regular text
-                comment = decoder.decode(line)
-                original_body = HTMLParser.HTMLParser().unescape(comment["body"])
+            main_counter += 1 # update the general counter
 
-                # filter comments by relevance to the topic
-                if len(GAYMAR.findall(original_body)) > 0 or len(MAREQU.findall(original_body)) > 0:
+            # parse the json, and turn it into regular text
+            comment = decoder.decode(line)
+            original_body = HTMLParser.HTMLParser().unescape(comment["body"])
 
-                    ## preprocess the comments
+            # filter comments by relevance to the topic
+            if len(GAYMAR.findall(original_body)) > 0 or len(MAREQU.findall(original_body)) > 0:
 
-                    if NN == True:
+                ## preprocess the comments
 
-                        body = sent_detector.tokenize(original_body) # tokenize the sentences
-                        body = NN_clean(body,stop) # clean the text for NN
+                if NN == True:
 
-                    else:
+                    body = sent_detector.tokenize(original_body) # tokenize the sentences
+                    body = NN_clean(body,stop) # clean the text for NN
 
-                        body = LDA_clean(original_body,stop) # clean the text for LDA
+                else:
 
-                    if NN == True: # for NN
+                    body = LDA_clean(original_body,stop) # clean the text for LDA
 
-                        if len(body) > 0: # if the comment body is not empty after preprocessing
-                            processed_counter += 1 # update the counter
+                if NN == True: # for NN
 
-                            # if we want to write the original comment to disk
-                            if write_original == True:
-                                original_body = original_body.replace("\n","") # remove mid-comment lines
-                                original_body = original_body.encode("utf-8") # set encoding
-                                print(" ".join(original_body.split()),file=foriginal) # record the original comment
-                                print(main_counter,file=main_indices) # record the main index
+                    if len(body) > 0: # if the comment body is not empty after preprocessing
+                        processed_counter += 1 # update the counter
 
-                            # if we are interested in the sign of the votes
-                            if vote_counting == True:
-                                # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
-                                print(np.sign(int(comment["score"])),end="\n",file=vote)
-                                # record the number of documents by year and month
+                        # if we want to write the original comment to disk
+                        if write_original == True:
+                            original_body = original_body.replace("\n","") # remove mid-comment lines
+                            original_body = original_body.encode("utf-8") # set encoding
+                            print(" ".join(original_body.split()),file=foriginal) # record the original comment
+                            print(main_counter,file=main_indices) # record the main index
 
-                            # update monthly comment counts
-                            created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
-                            if created_at not in timedict:
-                                timedict[created_at] = 1
-                            else:
-                                timedict[created_at] += 1
-
-                            for sen in body: # for each sentence in the comment
-
-                                # remove mid-comment lines and set encoding
-                                sen = sen.replace("\n","")
-                                sen = sen.encode("utf-8")
-
-                                # print the processed sentence to file
-                                print(" ".join(sen.split()), end=" ", file=fout)
-
-                            # ensure that each comment is on a separate line
-                            print("\n",end="",file=fout)
-
-                    else: # if doing LDA
-
-                        if body.strip() != "": # if the comment is not empty after preprocessing
-                            processed_counter += 1 # update the counter
-
-                            # if we want to write the original comment to disk
-                            if write_original == True:
-                                original_body = original_body.replace("\n","") # remove mid-comment lines
-                                original_body = original_body.encode("utf-8") # set encoding
-                                print(" ".join(original_body.split()),file=foriginal) # record the original comment
-                                print(main_counter,file=main_indices) # record the index in the original files
-
-                            # if we are interested in the sign of the votes
-                            if vote_counting == True:
-                                # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
-                                print(np.sign(int(comment["score"])),end="\n",file=vote)
-
+                        # if we are interested in the sign of the votes
+                        if vote_counting == True:
+                            # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
+                            print(np.sign(int(comment["score"])),end="\n",file=vote)
                             # record the number of documents by year and month
-                            created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
-                            if created_at not in timedict:
-                                timedict[created_at] = 1
-                            else:
-                                timedict[created_at] += 1
+
+                        # update monthly comment counts
+                        created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
+                        if created_at not in timedict:
+                            timedict[created_at] = 1
+                        else:
+                            timedict[created_at] += 1
+
+                        for sen in body: # for each sentence in the comment
 
                             # remove mid-comment lines and set encoding
-                            body = body.replace("\n","")
-                            body = body.encode("utf-8")
+                            sen = sen.replace("\n","")
+                            sen = sen.encode("utf-8")
 
-                            # print the comment to file
-                            print(" ".join(body.split()), sep=" ",end="\n", file=fout)
+                            # print the processed sentence to file
+                            print(" ".join(sen.split()), end=" ", file=fout)
 
-            # write the monthly cummulative number of comments to file
-            print(processed_counter,file=ccount)
+                        # ensure that each comment is on a separate line
+                        print("\n",end="",file=fout)
 
-            # close the files to save the data
-            fin.close()
-            fout.close()
-            if NN == True:
-                vote.close()
-            if write_original == True:
-                foriginal.close()
-                main_indices.close()
-            ccount.close()
+                else: # if doing LDA
 
-            # timer
-            print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
+                    if body.strip() != "": # if the comment is not empty after preprocessing
+                        processed_counter += 1 # update the counter
+
+                        # if we want to write the original comment to disk
+                        if write_original == True:
+                            original_body = original_body.replace("\n","") # remove mid-comment lines
+                            original_body = original_body.encode("utf-8") # set encoding
+                            print(" ".join(original_body.split()),file=foriginal) # record the original comment
+                            print(main_counter,file=main_indices) # record the index in the original files
+
+                        # if we are interested in the sign of the votes
+                        if vote_counting == True:
+                            # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
+                            print(np.sign(int(comment["score"])),end="\n",file=vote)
+
+                        # record the number of documents by year and month
+                        created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
+                        if created_at not in timedict:
+                            timedict[created_at] = 1
+                        else:
+                            timedict[created_at] += 1
+
+                        # remove mid-comment lines and set encoding
+                        body = body.replace("\n","")
+                        body = body.encode("utf-8")
+
+                        # print the comment to file
+                        print(" ".join(body.split()), sep=" ",end="\n", file=fout)
+
+        # write the monthly cummulative number of comments to file
+        print(processed_counter,file=ccount)
+
+        # close the files to save the data
+        fin.close()
+        fout.close()
+        if NN == True:
+            vote.close()
+        if write_original == True:
+            foriginal.close()
+            main_indices.close()
+        ccount.close()
+
+        # timer
+        print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
+
+        if clean_raw:
+            os.system('cd {} && rm {}'.format(path, filename))
 
     # timer
     print("Finished parsing at " + time.strftime('%l:%M%p'))
@@ -319,8 +354,17 @@ def Parser(path,stop,vote_counting,NN,write_original):
     fcount.close
 
 ### Function to call parser when needed and parse comments
-
-def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original):
+# Parameters:
+#   path: Path for data and output files.
+#   stop: List of stopwords.
+#   vote_counting: Include number of votes per comment in parsed file.
+#   NN: Parse for neural net.
+#   write_original: Write a copy of the raw file.
+#   download_raw: If the raw data doesn't exist in path, download a copy from
+#       https://files.pushshift.io/reddit/comments/.
+#   clean_raw: Delete the raw data file when finished.
+def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original,
+                          download_raw, clean_raw):
 
     # check input arguments for valid type
     if type(vote_counting) is not bool:
@@ -363,7 +407,8 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original):
 
             # timer
             print("Started parsing at " + time.strftime('%l:%M%p'))
-            Parser(path,stop,vote_counting,NN,write_original)
+            Parser(path,stop,vote_counting,NN,write_original,download_raw,
+                   clean_raw)
 
         else: # if preprocessed comments are available and the user does not wish to overwrite them
 
@@ -405,7 +450,8 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original):
 
                 # timer
                 print("Started parsing at " + time.strftime('%l:%M%p'))
-                Parser(path,stop,vote_counting,NN,write_original)
+                Parser(path,stop,vote_counting,NN,write_original, download_raw,
+                       clean_raw)
 
     else:
         if Path(path+"/RC_Count_List").is_file():
@@ -422,7 +468,7 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original):
 
         # timer
         print("Started parsing at " + time.strftime('%l:%M%p'))
-        Parser(path,stop,vote_counting,NN,write_original)
+        Parser(path,stop,vote_counting,NN,write_original,download_raw,clean_raw)
 
 ### determine what percentage of the posts in each year was relevant based on content filters
 
