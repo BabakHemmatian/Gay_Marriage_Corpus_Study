@@ -10,37 +10,41 @@ Conference on Computational Social Science, June 23-26.
 
 Usage:
 > import LDAmodel_alignment as malign
-> # To get the JSD between two topics
-> # From the same model
-> MA=malign.ModelAlignment('sample_lda_models/ldamodel1',
-    'sample_lda_models/ldamodel1')
-> MA.align_term_topic_matrices()
-> MA.get_jsd(MA.topics1[0], MA.topics1[1]) # Same as MA.get_jsd(MA.topics1[0],
-    # MA.topics2[1]), because here M1 is M2
-0.010366824011974973
->
-> # From different models
 > MA=malign.ModelAlignment('sample_lda_models/ldamodel1',
     'sample_lda_models/ldamodel2')
 > MA.align_term_topic_matrices()
+>
+> # See the probability assigned to the word "Kichenok" by topic 0 in the two
+> # models.
+> MA.words.index('Kichenok')
+12
+> MA.topics1[0][12], MA.topics2[0][12]
+(0.073367940937580534, 0.0)
+>
+> # To get the JSD between two topics
+> # From the same model
+> MA.get_jsd(MA.topics1[0], MA.topics1[1])
+0.011222475610648708
+> # From different models
 > MA.get_jsd(MA.topics1[0], MA.topics2[0])
-0.7051554823023656
+0.8352844910314774
 
 > # Compare two models as a whole
 > MA.get_alignment_pairs()
 > # See JSD between alignment pairs
 > MA.alignment_distances
-array([[        nan,  0.70096102],
-       [ 0.73932173,         nan]])
+array([[        nan,  0.82936841],
+       [        nan,  0.82716909],
+       [        nan,  0.81352602]])
 > # Get the average JSD between closest pairs
 > MA.get_alignment_distance()
 > MA.alignment_distance
-0.72014137605514128
+0.823354504957026
 > # Get the proportion of topics in M2 that complete an alignment pair with a
-    # topic in M1
+> # topic in M1
 > MA.get_topic_overlap()
 > MA.topic_overlap
-1.0
+0.5
 """
 
 from collections import defaultdict
@@ -50,13 +54,11 @@ import numpy as np
 import thoth.thoth as thoth
 
 class ModelAlignment(object):
-    def __init__(self, file1, file2):
-        m1=LdaModel.load(file1)
-        m2=LdaModel.load(file2)
-        if len(m1.id2word.keys())>=len(m2.id2word.keys()):
-            self.m1, self.m2=m1, m2
-        else:
-            self.m1, self.m2=m2, m1
+
+    # Assign M1 and M2 to models loaded from disk
+    def __init__(self, m1, m2):
+        self.m1=LdaModel.load(m1)
+        self.m2=LdaModel.load(m2)
 
     # Get the Jensen-Shannon distance between two probability distributions.
     def get_jsd(self, a, b):
@@ -70,22 +72,29 @@ class ModelAlignment(object):
     # matrices for M1 and M2 respectively. Every column in topics1 corresponds
     # to the same word in topics2.
     def align_term_topic_matrices(self):
-        t2t_lu=defaultdict(lambda:None)
-        m1_word2id=dict( (v, k) for k, v in self.m1.id2word.iteritems() )
         m2_word2id=dict( (v, k) for k, v in self.m2.id2word.iteritems() )
-        self.topics1=self.m1.get_topics()
-        topics2_=self.m2.get_topics()
-        self.topics2=[]
-        for i in range(len(self.topics1)):
-            topic=self.topics1[i]
-            topic_=[]
-            for j in range(len(topic)):
-                try:
-                    j_=m2_word2id[self.m1.id2word[j]]
-                    topic_.append(topics2_[i][j_])
-                except KeyError:
-                    topic_.append(0)
-            self.topics2.append(topic_)
+        topics1_=self.m1.get_topics().T
+        topics2_=self.m2.get_topics().T
+        words_=set(self.m1.id2word.values()+self.m2.id2word.values())
+        self.words=[None]*len(words_)
+        self.topics1=np.zeros((len(words_), topics1_.shape[1]))
+        self.topics2=np.zeros((len(words_), topics2_.shape[1]))
+        for i in sorted(self.m1.id2word.keys()):
+            self.words[i]=self.m1.id2word[i]
+            self.topics1[i]=topics1_[i]
+            try:
+                j=m2_word2id[self.m1.id2word[i]]
+                self.topics2[i]=topics2_[j]
+            except KeyError:
+                continue
+        for ix, word in enumerate(words_.difference(set(self.m1.id2word.values()))):
+            ix_=i+ix+1
+            self.words[ix_]=word
+            self.topics2[ix_]=topics2_[m2_word2id[word]]
+        self.topics1=self.topics1.T
+        self.topics2=self.topics2.T
+        assert None not in self.words
+        assert len(self.words)==len(words_)==len(set(self.words))
 
     # "...we perform a topic alignment between each pair of models by computing
     # the Jensen-Shannon distance (JSD) between the word probability

@@ -15,5 +15,6 @@ for i in (1,2):
             line=fh.readline().strip()
     id2word=corpora.Dictionary(lemmas)
     corpus=[ id2word.doc2bow(lemmas_) for lemmas_ in lemmas ]
-    ldamodel=LdaModel(corpus, id2word=id2word, num_topics=2)
+    num_topics=3 if i==1 else 2
+    ldamodel=LdaModel(corpus, id2word=id2word, num_topics=num_topics)
     ldamodel.save('ldamodel{}'.format(i))
