@@ -1741,7 +1741,7 @@ def Plotter(report,yr_topic_cont,name):
 
     plots = {}
     for i in range(len(report.tolist())):
-        plots[i]= plt.plot(range(1,len(plotter[0])+1),plotter[i],label='Topic '+str(report[i]+1))
+        plots[i]= plt.plot(range(1,len(plotter[0])+1),plotter[i],label='Topic '+str(report[i]))
     plt.legend(loc='best')
     plt.xlabel('Year (2006-'+str(2006+len(plotter[0])-1)+')')
     plt.ylabel('Topic Probability')
