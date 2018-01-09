@@ -30,6 +30,7 @@ from scipy.sparse import csr_matrix
 from functools import partial
 from contextlib import contextmanager
 from threading import Thread, Lock
+import hashlib
 nltk.download('stopwords')
 nltk.download('punkt')
 nltk.download('wordnet')
@@ -47,18 +48,10 @@ Max     = {key: [] for key in set_key_list}
 vote     = {key: [] for key in set_key_list} # for NN
 V = OrderedDict({}) # vocabulary
 
-# Year/month combinations to get Reddit data for
-DATES=[]
+### Functions for data file retrieval
 
-months=range(1,13)
-years=range(2006,2018)
-for year in years:
-    for month in months:
-        if year==2017 and month==10:
-            break
-        DATES.append((year,month))
+## Raw Reddit data filename format
 
-# Raw Reddit data filename format
 def _get_rc_filename(yr,mo):
     if len(str(mo))<2:
         mo='0{}'.format(mo)
@@ -66,12 +59,37 @@ def _get_rc_filename(yr,mo):
     assert len(str(mo))==2
     return 'RC_{}-{}.bz2'.format(yr, mo)
 
-# Download RC data.
+## Download Reddit comment data
+
 def download(year, month, path):
     BASE_URL='https://files.pushshift.io/reddit/comments/'
     url=BASE_URL+_get_rc_filename(year, month)
     print ('Sending request to {}.'.format(url))
     os.system('cd {} && wget {}'.format(path, url))
+
+## Get Reddit compressed data file hashsums to check downloaded files' integrity
+
+def Get_Hashsums(path):
+    print ('Retrieving hashsums to check file integrity')
+    hashsums = {}
+    url='https://files.pushshift.io/reddit/comments/sha256sums'
+    if not Path(path+'/sha256sums').is_file():
+        os.system('cd {} && wget {}'.format(path, url))
+    with open(path+'/sha256sums','rb') as f:
+        for line in f:
+            if line.strip() != "":
+                (val, key) = str(line).split()
+                hashsums[key] = val
+    return hashsums
+
+## calculate hashsums for downloaded files in chunks of size 4096B
+
+def sha256(fname):
+    hash_sha256= hashlib.sha256()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_sha256.update(chunk)
+    return hash_sha256.hexdigest()
 
 ### define the preprocessing function to add padding and remove punctuation, special characters and stopwords (neural network)
 
@@ -154,13 +172,11 @@ def LDA_clean(text,stop):
 ### define the relevance filters for gay marriage and marriage equality
 
 def getFilterBasicRegex():
-
     return re.compile("^(?=.*gay|.*homosexual|.*homophile|.*fag|.*faggot|.*fagot|.*queer|.*homo|.*fairy|.*nance|.*pansy|.*queen|.*LGBT|.*GLBT|.*same.sex|.*lesbian|.*dike|.*dyke|.*butch|.*sodom|.*bisexual)(?=.*marry|.*marri|.*civil union).*$", re.I)
 
 GAYMAR = getFilterBasicRegex()
 
 def getFilterEquRegex():
-
     return re.compile("^(?=.*marriage equality|.*equal marriage).*$", re.I)
 
 MAREQU = getFilterEquRegex()
@@ -170,8 +186,13 @@ MAREQU = getFilterEquRegex()
 # NOTE: Parses for LDA if NN = False
 # NOTE: Saves the text of the non-processed comment to file as well if write_original = True
 
-def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
-           clean_raw=True):
+### define the parser
+
+# NOTE: Parses for LDA if NN = False
+# NOTE: Saves the text of the non-processed comment to file as well if write_original = True
+
+def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
+           clean_raw=False):
 
     if NN == True: # if parsing for a neural network
 
@@ -183,6 +204,9 @@ def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
 
     ## iterate over files in directory to preprocess the text and record the votes
 
+    # get the correct hashsums to check file integrity
+    hashsums = Get_Hashsums(path)
+
     # initialize container for number of comments and indices related to each month
     timedict = dict()
 
@@ -191,17 +215,27 @@ def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
 
     processed_counter = 0 # counting the number of all processed comments
 
-    for year, month in DATES:
-        filename=_get_rc_filename(year, month)
-
-        if not filename in os.listdir(path) and download_raw:
-            download(year, month, path)
-
-        elif not filename in os.listdir(path):
-            print ('Can\'t find data for {}/{}. Skipping.'.format(month, year))
-            continue
+    for year, month in dates: # for each month
 
         ## prepare files
+
+        filename=_get_rc_filename(year, month) # get the relevant compressed data file name
+
+        if not filename in os.listdir(path) and download_raw: # if the file is not available on disk and download is turned on
+            download(year, month, path) # download the relevant file
+
+        elif not filename in os.listdir(path): # if the file is not available, but download is turned off
+            print ('Can\'t find data for {}/{}. Skipping.'.format(month, year)) # notify the user
+            continue
+
+        # check data file integrity and download again if needed
+
+        filesum = sha256(filename) # calculate hashsum for the data file on disk
+
+        while filesum != hashsums[filename]: # if the file hashsum does not match the correct hashsum
+            print("Corrupt data file detected. Re-downloading") # notify the user
+            os.remove(path+'/'+filename) # remove the corrupted file
+            download(year,month,path) # download it again
 
         # open the file as a text file, in utf8 encoding
         fin = bz2.BZ2File(path+'/'+filename,'r')
@@ -333,8 +367,8 @@ def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
         # timer
         print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
 
-        if clean_raw:
-            os.system('cd {} && rm {}'.format(path, filename))
+        if clean_raw: # if the user wishes compressed data files to be removed after processing
+            os.system('cd {} && rm {}'.format(path, filename)) # delete the recently processed file
 
     # timer
     print("Finished parsing at " + time.strftime('%l:%M%p'))
@@ -354,7 +388,10 @@ def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
     fcount.close
 
 ### Function to call parser when needed and parse comments
+
 # Parameters:
+
+#   dates: a list of (year,month) tuples for which data is to be processed
 #   path: Path for data and output files.
 #   stop: List of stopwords.
 #   vote_counting: Include number of votes per comment in parsed file.
@@ -363,16 +400,16 @@ def Parser(path,stop,vote_counting,NN,write_original,download_raw=True,
 #   download_raw: If the raw data doesn't exist in path, download a copy from
 #       https://files.pushshift.io/reddit/comments/.
 #   clean_raw: Delete the raw data file when finished.
-def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original,
+
+def Parse_Rel_RC_Comments(dates,path,stop,vote_counting, NN, write_original,
                           download_raw, clean_raw):
 
     # check input arguments for valid type
-    if type(vote_counting) is not bool:
-        raise Exception('Invalid vote counting argument')
-    if type(NN) is not bool:
-        raise Exception('Invalid NN argument')
-    if type(write_original) is not bool:
-        raise Exception('Invalid write_original argument')
+    assert type(vote_counting) is bool
+    assert type(NN) is bool
+    assert type(write_original) is bool
+    assert type(download_raw) is bool
+    assert type(clean_raw) is bool
     assert type(path) is str
     assert type(stop) is set or type(stop) is list
 
@@ -407,7 +444,7 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original,
 
             # timer
             print("Started parsing at " + time.strftime('%l:%M%p'))
-            Parser(path,stop,vote_counting,NN,write_original,download_raw,
+            Parser(dates,path,stop,vote_counting,NN,write_original,download_raw,
                    clean_raw)
 
         else: # if preprocessed comments are available and the user does not wish to overwrite them
@@ -450,7 +487,7 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original,
 
                 # timer
                 print("Started parsing at " + time.strftime('%l:%M%p'))
-                Parser(path,stop,vote_counting,NN,write_original, download_raw,
+                Parser(dates,path,stop,vote_counting,NN,write_original, download_raw,
                        clean_raw)
 
     else:
@@ -468,7 +505,7 @@ def Parse_Rel_RC_Comments(path,stop,vote_counting, NN, write_original,
 
         # timer
         print("Started parsing at " + time.strftime('%l:%M%p'))
-        Parser(path,stop,vote_counting,NN,write_original,download_raw,clean_raw)
+        Parser(dates,path,stop,vote_counting,NN,write_original,download_raw,clean_raw)
 
 # Helper function for select_random_comments.
 def _select_n(n, iterable):

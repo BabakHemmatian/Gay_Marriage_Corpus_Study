@@ -19,15 +19,15 @@ MaxVocab = 2000000 # maximum size of the vocabulary
 FrequencyFilter = 1 # tokens with a frequency equal or less than this number will be filtered out of the corpus
 no_below = 5 # tokens that appear in less than this number of documents in corpus will be filtered out
 no_above = 0.99 # tokens that appear in more than this fraction of documents in corpus will be filtered out
-training_fraction = 0.99 # what percentage of data will be used for training. The rest of the dataset will be used for evaluation
+training_fraction = 0.99 # what percentage of data will be used for training. The rest of the dataset will be used as an evaluation set for calculating perplexity
 
 ### LDA hyperparameters
 
 iterations = 1000 # number of times LDA posterior distributions will be sampled
 num_threads = 5 # number of threads used for parallelized processing of comments. Only matters if using _Threaded functions
-num_topics = 100 # number of topics to be generated in each LDA sampling
-sample_topics = 0.1 # percentage of topics that will be selected for reporting based on average yearly contribution
-topn = 20 # the number of high-probability words for each topic that will be exported
+num_topics = 50 # number of topics to be generated in each LDA sampling
+sample_topics = 0.2 # percentage of topics that will be selected for reporting based on average yearly contribution
+topn = 40 # the number of high-probability words for each topic that will be exported
 sample_comments = 100 # number of comments that will be sampled from top topics
 min_comm_length = 20 # the minimum acceptable number of words in a sampled comment. Set to None for no length filtering
 alpha = 0.1 # determines how many high probability topics will be assigned to a document in general (not to be confused with NN l2regularization constant)
@@ -39,17 +39,30 @@ minimum_phi_value = 0.01 # determines the lower bound on per-term topic probabil
 
 ## where the data is
 
-# NOTE: if not available, download from http://files.pushshift.io/reddit/comments/)
+# NOTE: if not fully available on file, set Download for Parser function to True (source: http://files.pushshift.io/reddit/comments/)
 # NOTE: if not in the same directory as this file, change the path variable accordingly
 
 file_path = os.path.abspath(sys.argv[0])
 path = os.path.dirname(file_path)
 
+## Year/month combinations to get Reddit data for
+
+dates=[] # initialize a list to contain the year, month tuples
+
+months=range(1,13) # month range
+years=range(2006,2018) # year range
+
+for year in years:
+    for month in months:
+        if year==2017 and month==10: # till Sep 2017
+            break
+        dates.append((year,month))
+
 ## where the output will be stored
 
 # NOTE: To avoid confusion between different kinds of models, record the variables most important to your iteration in the folder name
 
-output_path = path + "/LDA_Test_"+str(num_topics)
+output_path = path + "/LDA_Full_"+str(num_topics)
 if not os.path.exists(output_path):
     print("Creating directory to store the output")
     os.makedirs(output_path)
@@ -81,13 +94,14 @@ stop = set(nltk.corpus.stopwords.words('english'))
 
 # NOTE: If NN = False, will pre-process data for LDA.
 # NOTE: If write_original = True, the original text of a relevant comment - without preprocessing - will be saved to a separate file
-# NOTE: Relevance filters can be changed from Utils.py
+# NOTE: If clean_raw = True, the compressed data files will be removed from disk after processing
+# NOTE: Relevance filters can be changed from Utils.py. Do not forget to change the Parser function accordingly
 
-# Parse_Rel_RC_Comments(path,stop,vote_counting=True,NN=False, write_original=True)
+Parse_Rel_RC_Comments(dates,path,stop,vote_counting=True,NN=False, write_original=True,download_raw=True,clean_raw=False)
 
 ## call the function for calculating the percentage of relevant comments
 
-Perc_Rel_RC_Comment(path)
+# Perc_Rel_RC_Comment(path)
 
 ### create training and evaluation sets
 
@@ -139,7 +153,7 @@ else: # if there is a trained model, load it from file
 # NOTE: This function writes the estimates after calculation to the file "perf"
 # NOTE: This is a slow, serial function with no method for looking for previous estimates. Check the disk manually and comment out if estimates already exist
 
-# train_per_word_perplex,eval_per_word_perplex = Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_count,eval_word_count,perf)
+train_per_word_perplex,eval_per_word_perplex = Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_count,eval_word_count,perf)
 
 ### Determine Top Topics Based on Contribution to the Model ###
 
@@ -157,7 +171,7 @@ relevant_year,cumm_rel_year = Yearly_Counts(path)
 # NOTE: Percentage of contributions is relative to the parts of corpus for which there WAS a reasonable prediction based on the model
 # NOTE: For the LDA to give reasonable output, the number of topics given to this function should not be changed from what it was during model training
 # NOTE: Serial, threaded and multicore (default) versions of this function are available (See Utils.py)
-# NOTE: Even with multiprocessing, this function can become slow proportional to the number of top topics, as well as the number and the length of documents
+# NOTE: Even with multiprocessing, this function can be slow proportional to the number of top topics, as well as the size of the dataset
 
 ## Load or calculate topic distributions and create an enhanced version of the entire dataset
 
@@ -178,7 +192,7 @@ report = avg_cont.argsort()[-top_topic_no:][::-1]
 
 # NOTE: The resulting figure needs to be closed before functions after this point are run
 
-Plotter(report,yr_topic_cont,path+'/Temporal_Trend.png')
+Plotter(report,yr_topic_cont,output_path+'/Temporal_Trend.png')
 
 ## Find the top words associated with top topics and write them to file
 
@@ -200,4 +214,4 @@ theta = Get_Top_Topic_Theta(path,output_path,indexed_dataset,report,dictionary,l
 
 # NOTE: If write_original was set to False during the initial parsing, this function will require the original compressed data files (and will be much slower). If not in the same directory as this file, change the "path" argument
 
-Get_Top_Comments(path,output_path,theta,report,sample_comments,stop)
+Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_rel_year)
