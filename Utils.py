@@ -570,12 +570,12 @@ def select_random_comments(path, n, years=years, min_n_comments=5000,
                 print ("{} exists. Skipping. Set overwrite to True to overwrite.".format('{}.txt'.format(year)))
                 continue
             with open(sample_dir+'{}.txt'.format(year), 'w') as wfh:
+                start=ct_cumyear[ct_lu[year-1]]
                 while start>rix:
                     rfh.readline()
                     rix+=1
                 comments=[]
-                for _ in range(ct_cumyear[ct_lu[year-1]],
-                               ct_cumyear[ct_lu[year]]):
+                for _ in range(start, ct_cumyear[ct_lu[year]]):
                     comments.append(rfh.readline())
                     rix+=1
                 if len(comments)==0:
