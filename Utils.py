@@ -104,32 +104,31 @@ def NN_clean(text,stop):
 
     for index,sent in enumerate(text): # iterate over the sentences
 
-        sent = sent.replace("'"," ") # remove apostrophes and replace with space
+        # remove stopwords --> check to see if apostrophes are properly encoded
+        stop_free = " ".join([i for i in sent.lower().split() if i.lower() not in stop])
+        replace = {"should've":"should","mustn't":"mustn","shouldn't":"shouldn","couldn't":"couldn","shan't":"shan", "needn't":"needn", "-":""}
+        substrs = sorted(replace, key=len, reverse=True)
+        regexp = re.compile('|'.join(map(re.escape, substrs)))
+        stop_free = regexp.sub(lambda match: replace[match.group(0)], stop_free)
 
         # remove special characters
         special_free = ""
-        for word in sent.lower().split():
+        for word in stop_free.split():
             if "http" not in word and "www" not in word: # remove links
                 word = re.sub('[^A-Za-z0-9]+', ' ', word)
-                special_free = special_free+" "+word
+                if word.strip() != "":
+                    special_free = special_free+" "+word.strip()
 
-        # remove stopwords
-        stop_free = " ".join([i for i in special_free.split() if i not in stop])
-
-        # determine the set of punctuations that should be removed
-        exclude = set(string.punctuation)
-
-        # remove punctuation
-        no_punc = re.compile('|'.join(map(re.escape, exclude)))
-        punc_free = no_punc.sub(' ',stop_free)
+        # check for stopwords again
+        special_free = " ".join([i for i in special_free.split() if i not in stop])
 
         # add sentence and end of comment padding
-        if punc_free.strip() != "":
+        if special_free.strip() != "":
             padded = punc_free+" *STOP*"
             if index+1 == len(text):
                 padded = padded+" *STOP2*"
             cleaned.append(padded)
-        elif punc_free.strip() == "" and len(text)!=1 and len(cleaned)!=0 and index+1 == len(text):
+        elif special_free.strip() == "" and len(text)!=1 and len(cleaned)!=0 and index+1 == len(text):
             cleaned[-1] = cleaned[-1]+" *STOP2*"
 
     return cleaned
@@ -145,27 +144,26 @@ def LDA_clean(text,stop):
     assert type(text) is unicode or type(text) is str
     assert type(stop) is set or type(stop) is list
 
-    text = text.replace("'"," ") # remove apostrophes and replace with space
+    # remove stopwords
+    stop_free = " ".join([i for i in text.lower().split() if i.lower() not in stop])
+    replace = {"should've":"should","mustn't":"mustn","shouldn't":"shouldn","couldn't":"couldn","shan't":"shan", "needn't":"needn", "-":""}
+    substrs = sorted(replace, key=len, reverse=True)
+    regexp = re.compile('|'.join(map(re.escape, substrs)))
+    stop_free = regexp.sub(lambda match: replace[match.group(0)], stop_free)
 
     # remove special characters
     special_free = ""
-    for word in text.lower().split():
+    for word in stop_free.lower().split():
         if "http" not in word and "www" not in word: # remove links
             word = re.sub('[^A-Za-z0-9]+', ' ', word)
-            special_free = special_free+" "+word
+            if word.strip() != "":
+                special_free = special_free+" "+word.strip()
 
-    # remove stopwords
-    stop_free = " ".join([i for i in special_free.split() if i not in stop])
-
-    # determine the set of punctuations that should be removed
-    exclude = set(string.punctuation)
-
-    # remove punctuation
-    no_punc = re.compile('|'.join(map(re.escape, exclude)))
-    punc_free = no_punc.sub(' ',stop_free)
+    # check for stopwords again
+    special_free = " ".join([i for i in special_free.split() if i not in stop])
 
     # lemmatize
-    normalized = " ".join(nltk.stem.WordNetLemmatizer().lemmatize(word) for word in punc_free.split())
+    normalized = " ".join([nltk.stem.WordNetLemmatizer().lemmatize(word) if word != "us" else "us" for word in special_free.split()])
 
     return normalized
 
