@@ -22,6 +22,7 @@ import re
 import sys
 import nltk
 import glob
+import csv
 from collections import defaultdict,OrderedDict
 from pathlib2 import Path
 from random import sample
@@ -505,13 +506,58 @@ def Parse_Rel_RC_Comments(dates,path,stop,vote_counting, NN, write_original,
         print("Started parsing at " + time.strftime('%l:%M%p'))
         Parser(dates,path,stop,vote_counting,NN,write_original,download_raw,clean_raw)
 
-# Helper function for select_random_comments.
+### calculate the yearly relevant comment counts
+
+def Yearly_Counts(path):
+
+    # check for monthly relevant comment counts
+    if not Path(path+'/RC_Count_List').is_file():
+        raise Exception('The cummulative monthly counts could not be found')
+
+    # load monthly relevant comment counts
+    with open(path+"/RC_Count_List",'r') as f:
+        timelist = []
+        for line in f:
+            if line.strip() != "":
+                timelist.append(int(line))
+
+    # calculate the cummulative yearly counts
+
+    # intialize lists and counters
+    cumm_rel_year = [] # cummulative number of comments per year
+    relevant_year = [] # number of comments per year
+
+    month_counter = 0
+
+    # iterate through monthly counts
+    for index,number in enumerate(timelist): # for each month
+        month_counter += 1 # update counter
+
+        if month_counter == 12 or index == len(timelist) - 1: # if at the end of the year or the corpus
+
+            cumm_rel_year.append(number) # add the cummulative count
+
+            if index + 1 == 12: # for the first year
+
+                relevant_year.append(number) # append the cummulative value to number of comments per year
+
+            else: # for the other years, subtract the last two cummulative values to find the number of relevant comments in that year
+
+                relevant_year.append(number - relevant_year[-1])
+
+            month_counter = 0 # reset the counter at the end of the year
+
+    return relevant_year,cumm_rel_year
+        
+### Helper function for select_random_comments
+
 def _select_n(n, iterable):
     if len(iterable)<n:
         return iterable
     return np.random.choice(iterable, size=n)
 
-# Writes the original text of n comments from each year in years to file.
+#### Writes the original text of n comments from each year in years to file.
+
 # Intended for selecting comments for ground truth ratings to provide the neural
 # net with training data.
 #
@@ -526,6 +572,7 @@ def _select_n(n, iterable):
 #       from the pooled set of relevant comments from 2006, 2007 and 2008.
 #       Defaults to 5000.
 #   overwrite: If the sample file for the year exists, skip.
+
 def select_random_comments(path, n, years=years, min_n_comments=5000,
                            overwrite=False):
     years=sorted(years)
@@ -580,7 +627,7 @@ def select_random_comments(path, n, years=years, min_n_comments=5000,
                     continue
                 for comment in _select_n(n, comments):
                     wfh.write(comment)
-
+                    
 ### determine what percentage of the posts in each year was relevant based on content filters
 
 # NOTE: Requires total comment counts (RC_Count_Total) from http://files.pushshift.io/reddit/comments/
@@ -595,7 +642,7 @@ def Rel_Counter(path):
         raise Exception('Total monthly comment counts cannot be found')
 
     # load relevant monthly counts
-    with open("RC_Count_Dict",'r') as f:
+    with open(path+"/RC_Count_Dict",'r') as f:
         timedict = dict()
         for line in f:
             if line.strip() != "":
@@ -604,7 +651,7 @@ def Rel_Counter(path):
 
     # load the total monthly counts into a dictionary
     d = {}
-    with open("RC_Count_Total",'r') as f:
+    with open(path+"/RC_Count_Total",'r') as f:
         for line in f:
             line = line.replace("\n","")
             if line.strip() != "":
@@ -1262,49 +1309,6 @@ def Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_co
 
     return train_per_word_perplex,eval_per_word_perplex
 
-### calculate the yearly relevant comment counts
-
-def Yearly_Counts(path):
-
-    # check for monthly relevant comment counts
-    if not Path(path+'/RC_Count_List').is_file():
-        raise Exception('The cummulative monthly counts could not be found')
-
-    # load monthly relevant comment counts
-    with open(path+"/RC_Count_List",'r') as f:
-        timelist = []
-        for line in f:
-            if line.strip() != "":
-                timelist.append(int(line))
-
-    # calculate the cummulative yearly counts
-
-    # intialize lists and counters
-    cumm_rel_year = [] # cummulative number of comments per year
-    relevant_year = [] # number of comments per year
-
-    month_counter = 0
-
-    # iterate through monthly counts
-    for index,number in enumerate(timelist): # for each month
-        month_counter += 1 # update counter
-
-        if month_counter == 12 or index == len(timelist) - 1: # if at the end of the year or the corpus
-
-            cumm_rel_year.append(number) # add the cummulative count
-
-            if index + 1 == 12: # for the first year
-
-                relevant_year.append(number) # append the cummulative value to number of comments per year
-
-            else: # for the other years, subtract the last two cummulative values to find the number of relevant comments in that year
-
-                relevant_year.append(number - relevant_year[-1])
-
-            month_counter = 0 # reset the counter at the end of the year
-
-    return relevant_year,cumm_rel_year
-
 ### function for creating an enhanced version of the dataset with year and comment indices (used in topic contribution and theta calculation)
 
 # NOTE: This function will in the future be removed and integrated into the main parser
@@ -1367,14 +1371,12 @@ def Get_Indexed_Dataset(path,cumm_rel_year):
 #                         analyzed_comment_length += 1 # update comment word counter
 #
 #             else: # if comment consists of more than one word
-#                 for word in comment.strip().split(): # for each word, do the same as above
-#                     if word in dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
-#                         # find the most likely topic according to the trained model
-#                         term_topics = ldamodel.get_term_topics(dictionary.token2id[word])
-#                         if len(term_topics) != 0:
-#                             topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
-#                             dxt[0,topic_asgmt-1] += 1
-#                             analyzed_comment_length += 1
+                # topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
+                # for word,topic_set in topics[0][1]: # iterate over the words
+                    # if len(topic_set) != 0: # if the model has predictions for the specific word
+                    #     # record the most likely topic according to the trained model
+                    #     dxt[topic_set[0],0] += 1
+                    #     analyzed_comment_length += 1 # update word counter
 #
 #             if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
 #                 dxt = (float(1) / float(len(comment))) * dxt # normalize the topic contribution using comment length (should it be analyzed_comment_length or length?)
@@ -1424,14 +1426,12 @@ def info(title):
 #                     analyzed_comment_length += 1 # update comment word counter
 #
 #         else: # if comment consists of more than one word
-#             for word in indexed_comment[1].strip().split(): # for each word, do the same as above
-#                 if word in dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
-#                     # find the most likely topic according to the trained model
-#                     term_topics = ldamodel.get_term_topics(dictionary.token2id[word])
-#                     if len(term_topics) != 0:
-#                         topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
-#                         dxt[0,topic_asgmt] += 1
-#                         analyzed_comment_length += 1
+            # topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
+            # for word,topic_set in topics[0][1]: # iterate over the words
+                # if len(topic_set) != 0: # if the model has predictions for the specific word
+                #     # record the most likely topic according to the trained model
+                #     dxt[topic_set[0],0] += 1
+                #     analyzed_comment_length += 1 # update word counter
 #
 #         lock.acquire()
 #         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
@@ -1570,16 +1570,17 @@ def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
                 analyzed_comment_length += 1 # update word counter
 
     else: # if comment consists of more than one word
-        for word in indexed_comment[1].strip().split(): # for each word, do the same as above
-            if word in dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
-                # find the most likely topic according to the trained model
-                term_topics = ldamodel.get_term_topics(dictionary.token2id[word]) # get topic distribution for the word based on trained model
-                if len(term_topics) != 0: # if a topic with non-trivial probability is found
-                    # find the most likely topic for that word according to the trained model
-                    topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
 
-                    dxt[topic_asgmt,0] += 1 # record the topic assignment
-                    analyzed_comment_length += 1 # update word counter
+        topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
+
+        for word,topic_set in topics[0][1]: # iterate over the words
+
+            if len(topic_set) != 0: # if the model has predictions for the specific word
+
+                # record the most likely topic according to the trained model
+                dxt[topic_set[0],0] += 1
+
+                analyzed_comment_length += 1 # update word counter
 
     if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
 
@@ -1654,7 +1655,7 @@ def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_y
 
     return yearly_output,indexed_dataset
 
-# ### Function for Calculating Topic Contribution ###
+# ### Function for Calculating Topic Contribution ### (no shared variable between processes. Compare performance)
 #
 # # NOTE: Topics in Gensim use Python indexing (indices start at 0)
 #
@@ -1680,17 +1681,18 @@ def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_y
 #                 dxt[topic_asgmt,0] += 1 # record the topic assignment
 #                 analyzed_comment_length += 1 # update word counter
 #
-#     else: # if comment consists of more than one word
-#         for word in indexed_comment[1].strip().split(): # for each word, do the same as above
-#             if word in dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
-#                 # find the most likely topic according to the trained model
-#                 term_topics = ldamodel.get_term_topics(dictionary.token2id[word]) # get topic distribution for the word based on trained model
-#                 if len(term_topics) != 0: # if a topic with non-trivial probability is found
-#                     # find the most likely topic for that word according to the trained model
-#                     topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
+    # else: # if comment consists of more than one word
+    #     topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
+    #
+    #     for word,topic_set in topics[0][1]: # iterate over the words
+    #
+    #         if len(topic_set) != 0: # if the model has predictions for the specific word
+    #
+    #             # record the most likely topic according to the trained model
+    #             dxt[topic_set[0],0] += 1
+    #
+    #             analyzed_comment_length += 1 # update word counter
 #
-#                     dxt[topic_asgmt,0] += 1 # record the topic assignment
-#                     analyzed_comment_length += 1 # update word counter
 #
 #     if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
 #
@@ -1979,13 +1981,18 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_re
 
         ## iterate over files in directory to find the relevant documents
 
-        # counting the number of all processed comments
-        counter = 0
+        sample = 0 # counting the number of sampled comments
+        counter = 0 # counting the number of all processed comments
         year_counter = 0 # the first year in the corpus (2006)
 
         # check for the presence of data files
         if not glob.glob(path+'/*.bz2'):
             raise Exception('No data file found')
+
+        # open a CSV file for recording sampled comment values
+        with open(output_path+'/sample_ratings.csv','a+b') as csvfile:
+            writer = csv.writer(csvfile) # initialize the CSV writer
+            writer.writerow(['number','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
 
         # iterate through the files in the 'path' directory in alphabetic order
         for filename in sorted(os.listdir(path)):
@@ -2000,6 +2007,10 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_re
 
                 # create a file to write the sampled comments to
                 fout = open(output_path+'/sampled_comments','a+')
+
+                # open CSV file to write the sampled comment data to
+                csvfile = open(output_path+'/sample_ratings.csv','a+b')
+                writer = csv.writer(csvfile) # initialize the CSV writer
 
                 ## read data
 
@@ -2030,6 +2041,12 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_re
                                 original_body = original_body.replace("\n","")
                                 original_body = original_body.encode("utf-8")
 
+                                # update the sample counter
+                                sample += 1
+
+                                # print the sample number to file
+                                print(sample,file=fout)
+
                                 # print relevant year to file
                                 print('Year: '+str(2006+year_counter),file=fout)
 
@@ -2043,18 +2060,25 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_re
                                 # print the comment to file
                                 print(" ".join(original_body.strip().split()),file=fout)
 
+                                # print the values to CSV file
+                                writer.writerow([sample,report[itemindex[0][0]],sampled_probs[itemindex[0][0],itemindex[1][0]]])
+
                 # close the files to save the data
                 fin.close()
                 fout.close()
+                csvfile.close()
 
         # timer
         print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
 
     else: # if a file containing only the original relevant comments is available on disk
 
-        with open(path+'/original_comm','a+') as fin, open(output_path+'/sampled_comments','a+') as fout: # determine the I/O files
+        with open(path+'/original_comm','a+') as fin, open(output_path+'/sample_ratings.csv','a+b') as csvfile, open(output_path+'/sampled_comments','a+') as fout: # determine the I/O files
 
+            sample = 0 # initialize a counter for the sampled comments
             year_counter = 0 # initialize a counter for the comment's year
+            writer = csv.writer(csvfile) # initialize the CSV writer
+            writer.writerow(['number','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
 
             for comm_index,comment in enumerate(fin): # iterate over the original comments
 
@@ -2063,6 +2087,12 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_re
                     # update the year counter if need be
                     if comm_index >= cumm_rel_year[year_counter]:
                         year_counter += 1
+
+                    # update the sample counter
+                    sample += 1
+
+                    # print the sample number to file
+                    print(sample,file=fout)
 
                     # print the relevant year to file
                     print('Year: '+str(2006+year_counter),file=fout)
@@ -2076,6 +2106,9 @@ def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_re
 
                     # print the comment to output file
                     print(" ".join(original_body.strip().split()),file=fout)
+
+                    # print the values to CSV file
+                    writer.writerow([sample,report[itemindex[0][0]],sampled_probs[itemindex[0][0],itemindex[1][0]]])
 
             # timer
             print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
