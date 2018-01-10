@@ -706,7 +706,7 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
         num_eval = num_comm - num_train # size of evaluation set
 
         LDA_sets['eval'] = sample(range(num_comm),num_eval) # choose evaluation comments at random
-        LDA_sets['train'] = [x for x in range(num_comm) if x not in LDA_sets['eval']] # assign the rest of the comments to training
+        LDA_sets['train'] = set(range(num_comm)).difference(set(LDA_sets['eval'])) # assign the rest of the comments to training
 
         # sort the indices based on position in lda_prep
         for set_key in LDA_set_keys:
@@ -738,7 +738,7 @@ def Define_Sets(path,training_fraction,NN):
     # load the number of comments or raise Exception if they can't be found
     timelist = []
     if Path(path+"/RC_Count_List").is_file():
-        with open("RC_Count_List",'r') as f:
+        with open(path+"/RC_Count_List",'r') as f:
             for line in f:
                 timelist.append(int(line))
     else:
