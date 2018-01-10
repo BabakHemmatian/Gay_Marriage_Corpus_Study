@@ -49,6 +49,8 @@ Max     = {key: [] for key in set_key_list}
 vote     = {key: [] for key in set_key_list} # for NN
 V = OrderedDict({}) # vocabulary
 
+years=range(2006, 2018)
+
 ### Functions for data file retrieval
 
 ## Raw Reddit data filename format
@@ -556,15 +558,11 @@ def _select_n(n, iterable):
         return iterable
     return np.random.choice(iterable, size=n)
 
-#### Writes the original text of n comments from each year in years to file.
+#### Writes the indices of n comments from each year in years to file.
 
-# Intended for selecting comments for ground truth ratings to provide the neural
-# net with training data.
-#
 # Parameters:
 #   path: Path to working directory.
-#   n: Number of comments to retrieve for each year.
-#   years: years to select from.
+#   years_to_sample: Years to select from.
 #   min_n_comments: Combine all comments from years with less than
 #       min_n_comments comments and select from the combined set. E.g. If
 #       min_n_comments = 5000, since there are less than 5000 (relevant)
@@ -573,61 +571,46 @@ def _select_n(n, iterable):
 #       Defaults to 5000.
 #   overwrite: If the sample file for the year exists, skip.
 
-def select_random_comments(path, n, years=years, min_n_comments=5000,
+def select_random_comments(path, n, years_to_sample=years, min_n_comments=5000,
                            overwrite=False):
-    years=sorted(years)
-    ct_peryear, ct_cumyear=Yearly_Counts(path)
-    ct_lu=dict((y, i) for i, y in enumerate(range(2006, 2018)))
-    early_years=[ yr for yr in years if ct_peryear[ct_lu[yr]]<min_n_comments ]
-    years=[ yr for yr in years if yr not in early_years ]
+    # File to write random comment indices to
+    fout='random_indices'
+
     if path[-1]!='/':
         path+='/'
-    sample_dir=path+'random_samples/'
-    os.system('mkdir -p {}'.format(sample_dir))
-    with open(path+'original_comm', 'r') as rfh:
-        rix=0
-        early_yr_fn=str(early_years[0])
-        if len(early_years)>1:
-            early_yr_fn+='-'+'-'.join(str(yr)[2:] for yr in early_years[1:])
-        early_yr_fn+='.txt'
-        if ( not overwrite and os.path.exists(sample_dir+early_yr_fn) ):
-            print ("{} exists. Skipping. Set overwrite to True to overwrite.".format(early_yr_fn))
-            pass
-        else:
-            with open(sample_dir+early_yr_fn, 'w') as wfh:
-                for year in early_years:
-                    start=ct_cumyear[ct_lu[year-1]] if year-1 in ct_lu else 0
-                    while start>rix:
-                        rfh.readline()
-                        rix+=1
-                    comments=[]
-                    for _ in range(start, ct_cumyear[ct_lu[year]]):
-                        comments.append(rfh.readline())
-                        rix+=1
-                    if len(comments)==0:
-                        continue
-                    for comment in _select_n(n, comments):
-                        wfh.write(comment)
+    fout=path+fout 
+    if ( not overwrite and os.path.exists(fout) ):
+        print ("{} exists. Skipping. Set overwrite to True to overwrite.".format(fout))
+        return
 
-        for year in years:
-            if ( not overwrite and
-                 os.path.exists(sample_dir+'{}.txt'.format(year)) ):
-                print ("{} exists. Skipping. Set overwrite to True to overwrite.".format('{}.txt'.format(year)))
-                continue
-            with open(sample_dir+'{}.txt'.format(year), 'w') as wfh:
-                start=ct_cumyear[ct_lu[year-1]]
-                while start>rix:
-                    rfh.readline()
-                    rix+=1
-                comments=[]
-                for _ in range(start, ct_cumyear[ct_lu[year]]):
-                    comments.append(rfh.readline())
-                    rix+=1
-                if len(comments)==0:
-                    continue
-                for comment in _select_n(n, comments):
-                    wfh.write(comment)
-                    
+    years_to_sample=sorted(years_to_sample)
+    ct_peryear, ct_cumyear=Yearly_Counts(path)
+    ct_lu=dict((y, i) for i, y in enumerate(years))
+    early_years=[ yr for yr in years_to_sample if
+                  ct_peryear[ct_lu[yr]]<min_n_comments ]
+    # Make sure the early_years actually contains the first years in years, if
+    # any. Otherwise the order that indices are written to file won't make any
+    # sense.
+    assert all([ early_years[i]==early_years[i-1]+1 for i in range(1,
+                 len(early_years)) ])
+    assert all([ yr==yr_ for yr, yr_ in zip(early_years,
+                 years_to_sample[:len(early_years)]) ])
+    later_years=[ yr for yr in years_to_sample if yr not in early_years ]
+    with open(fout, 'w') as wfh:
+        if len(early_years)>0:
+            fyear, lyear=early_years[0], early_years[-1]
+            start=ct_cumyear[ct_lu[fyear-1]] if fyear-1 in ct_lu else 0
+            wfh.write('\n'.join(map(str, sorted(_select_n(n,
+                      range(start, ct_cumyear[ct_lu[lyear]]))))))
+            wfh.write('\n')
+        for year in later_years:
+            start=ct_cumyear[ct_lu[year-1]]
+            wfh.write('\n'.join(map(str, sorted(_select_n(n,
+                      range(start, ct_cumyear[ct_lu[year]]))))))
+            wfh.write('\n')
+
+    return
+               
 ### determine what percentage of the posts in each year was relevant based on content filters
 
 # NOTE: Requires total comment counts (RC_Count_Total) from http://files.pushshift.io/reddit/comments/
