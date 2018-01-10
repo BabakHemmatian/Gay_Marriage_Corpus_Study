@@ -379,7 +379,7 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
     if Path(path+"/RC_Count_Dict").is_file():
         os.remove(path+"/RC_Count_Dict")
 
-    fcount = open("RC_Count_Dict",'a+')
+    fcount = open(path+"/RC_Count_Dict",'a+')
 
     for month,docs in sorted(timedict.iteritems()):
         print(month+" "+str(docs),end='\n',file=fcount)
@@ -676,7 +676,7 @@ def Rel_Counter(path):
 
     # calculate the percentage of comments in each year that was relevant and write it to file
     perc_rel = {}
-    rel = open("perc_rel",'a+')
+    rel = open(path+"/perc_rel",'a+')
     for key in relevant_year:
         perc_rel[key] = float(relevant_year[key]) / float(total_year[key])
     print(sorted(perc_rel.items()),file=rel)
@@ -737,7 +737,7 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
 
         # write the sets to file
         for set_key in set_key_list:
-            with open(set_key+'_set','a+') as f:
+            with open(path+'/'+set_key+'_set','a+') as f:
                 for index in sets[set_key]:
                     print(index,end='\n',file=f)
 
@@ -762,7 +762,7 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
 
         # write the sets to file
         for set_key in LDA_set_keys:
-            with open('LDA_'+set_key+'_set','a+') as f:
+            with open(path+'/LDA_'+set_key+'_set','a+') as f:
                 for index in LDA_sets[set_key]:
                     print(index,end='\n',file=f)
 
@@ -783,7 +783,7 @@ def Define_Sets(path,training_fraction,NN):
     # load the number of comments or raise Exception if they can't be found
     timelist = []
     if Path(path+"/RC_Count_List").is_file():
-        with open("RC_Count_List",'r') as f:
+        with open(path+"/RC_Count_List",'r') as f:
             for line in f:
                 timelist.append(int(line))
     else:
@@ -819,7 +819,7 @@ def Define_Sets(path,training_fraction,NN):
                 print("Loading sets from file")
 
                 for set_key in set_key_list:
-                    with open(set_key + '_set','r') as f:
+                    with open(path+'/'+set_key + '_set','r') as f:
                         for line in f:
                             if line.strip() != "":
                                 sets[set_key].append(int(line))
@@ -861,7 +861,7 @@ def Define_Sets(path,training_fraction,NN):
 
             if NN == True: # for NN
                 for set_key in set_key_list:
-                    with open(set_key + '_set','r') as f:
+                    with open(path+'/'+set_key + '_set','r') as f:
                         for line in f:
                             if line.strip() != "":
                                 sets[set_key].append(int(line))
@@ -874,7 +874,7 @@ def Define_Sets(path,training_fraction,NN):
             else: # for LDA
 
                 for set_key in LDA_set_keys:
-                    with open("LDA_"+set_key+"_set",'r') as f:
+                    with open(path+"/LDA_"+set_key+"_set",'r') as f:
                         for line in f:
                             if line.strip() != "":
                                 LDA_sets[set_key].append(int(line))
@@ -924,7 +924,7 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
 
     if Path(path+"/nn_prep").is_file(): # look for preprocessed data
 
-        fin = open('nn_prep','r')
+        fin = open(path+'/nn_prep','r')
         for comment in fin: # for each comment
             for token in comment.split(): # for each word
                 frequency[token] += 1 # count the number of occurrences
@@ -939,7 +939,7 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
         if Path(path+"/dict").is_file():
             print("Loading dictionary from file")
 
-            with open("dict",'r') as f:
+            with open(path+"/dict",'r') as f:
                 for line in f:
                     if line.strip() != "":
                         (key, val) = line.split()
@@ -956,7 +956,7 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
 
         print("Loading the set from file")
 
-        with open("indexed_"+set_key,'r') as f:
+        with open(path+"/indexed_"+set_key,'r') as f:
             for line in f:
                 assert line.strip() != ""
                 comment = []
@@ -1047,14 +1047,14 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
         ## save the vocabulary to file
 
         if set_key == 'train':
-            vocab = open("dict",'a+')
+            vocab = open(path+"/dict",'a+')
             for word,index in V.iteritems():
                 print(word+" "+str(index),file=vocab)
             vocab.close
 
         ## save the indexed datasets to file
 
-        with open("indexed_"+set_key,'a+') as f:
+        with open(path+"/indexed_"+set_key,'a+') as f:
             for comment in indexes[set_key]:
                 assert len(comment) != 0
                 for ind,word in enumerate(comment):
@@ -1099,7 +1099,7 @@ def Get_Votes(path):
         for set_key in set_key_list:
             vote[set_key] = []
 
-        with open("votes",'r') as f:
+        with open(path+"/votes",'r') as f:
             for index,sign in enumerate(f):
                 sign = sign.strip()
                 match_found = 0
@@ -1217,11 +1217,11 @@ def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
                 raise Exception('Error in processing comment indices')
 
         # write the number of words in the frequency-filtered corpus to file
-        with open('train_word_count','w') as u:
+        with open(path+'/train_word_count','w') as u:
             print(train_word_count,file=u)
 
         # write the number of words in the frequency-filtered evaluation set to file
-        with open('eval_word_count','w') as w:
+        with open(path+'/eval_word_count','w') as w:
             print(eval_word_count,file=w)
 
         ## create the dictionary
