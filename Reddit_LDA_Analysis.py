@@ -12,7 +12,7 @@ reload(sys)
 sys.setdefaultencoding('utf-8')
 
 # Are we using a random subset of comments, or the whole dataset?
-ENTIRE_CORPUS=False
+ENTIRE_CORPUS='all' in sys.argv
 
 ### determine hyperparameters ###
 

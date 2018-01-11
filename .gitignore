@@ -2,3 +2,4 @@ access_token
 *.bz2
 *.pyc
 config.py
+sample_lda_models/ldamodel*
