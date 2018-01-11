@@ -689,13 +689,13 @@ def Perc_Rel_RC_Comment(path):
 
 ### function to determine comment indices for new training, development and test sets
 
-def Create_New_Sets(path,training_fraction,timelist,NN):
+def Create_New_Sets(path,training_fraction,indices,NN):
 
     print("Creating sets")
 
     # determine indices of set elements
 
-    num_comm = timelist[-1] # number of comments
+    num_comm = len(indices) # number of comments
 
     num_train = int(ceil(training_fraction * num_comm)) # size of training set
 
@@ -705,10 +705,11 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
         num_dev = int(floor(num_remaining/2)) # size of the development set
         num_test = num_remaining - num_dev # size of the test set
 
-        sets['dev'] = sample(range(num_comm),num_dev) # choose development comments at random
-        remaining = [x for x in range(num_comm) if x not in sets['dev']]
+        sets['dev'] = sample(indices, num_dev) # choose development comments at random
+        remaining = set(indices).difference(sets['dev'])
         sets['test']  = sample(remaining,num_test) # choose test comments at random
-        sets['train'] = [x for x in remaining if x not in sets['test']] # use the rest as training set
+        # use the rest as training set
+        sets['train'] = set(remaining).difference(sets['test'])
 
         # sort the indices based on position in nn_prep
         for set_key in set_key_list:
@@ -716,7 +717,7 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
 
         # Check dev and test sets came out with right proportions
         assert (len(sets['dev']) - len(sets['test'])) <= 1
-        assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
+        assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == len(indices)
 
         # write the sets to file
         for set_key in set_key_list:
@@ -724,24 +725,19 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
                 for index in sets[set_key]:
                     print(index,end='\n',file=f)
 
-        # ensure set sizes are correct
-
-        assert len(sets['dev']) - len(sets['test']) < 1
-        assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
-
     else: # for LDA
 
         num_eval = num_comm - num_train # size of evaluation set
 
-        LDA_sets['eval'] = sample(range(num_comm),num_eval) # choose evaluation comments at random
-        LDA_sets['train'] = set(range(num_comm)).difference(set(LDA_sets['eval'])) # assign the rest of the comments to training
+        LDA_sets['eval'] = sample(indices,num_eval) # choose evaluation comments at random
+        LDA_sets['train'] = set(indices).difference(set(LDA_sets['eval'])) # assign the rest of the comments to training
 
         # sort the indices based on position in lda_prep
         for set_key in LDA_set_keys:
             LDA_sets[set_key] = sorted(list(LDA_sets[set_key]))
 
         # Check that sets came out with right proportions
-        assert len(LDA_sets['train']) + len(LDA_sets['eval']) == timelist[-1]
+        assert len(LDA_sets['train']) + len(LDA_sets['eval']) == len(indices)
 
         # write the sets to file
         for set_key in LDA_set_keys:
@@ -751,7 +747,7 @@ def Create_New_Sets(path,training_fraction,timelist,NN):
 
 ### function for loading, calculating, or recalculating sets
 
-def Define_Sets(path,training_fraction,NN):
+def Define_Sets(path,training_fraction,NN,all_=False):
 
     # ensure the arguments have the correct types and values
 
@@ -764,13 +760,15 @@ def Define_Sets(path,training_fraction,NN):
         raise Exception('Invalid path')
 
     # load the number of comments or raise Exception if they can't be found
-    timelist = []
-    if Path(path+"/RC_Count_List").is_file():
-        with open(path+"/RC_Count_List",'r') as f:
-            for line in f:
-                timelist.append(int(line))
-    else:
-        raise Exception("The monthly counts could not be found")
+    findices='RC_Count_List' if all_ else 'random_indices'
+    try:
+        assert findices in os.listdir(path)
+    except AssertionError:
+        raise Exception("File {} not found.".format(findices))
+
+    indices=open(path+'/'+findices, 'r').read().split()
+    indices=filter(lambda x:x.strip(), indices)
+    indices=map(int, indices)
 
     # if indexed comments are available (NN)
     if (NN == True and Path(path+"/indexed_train").is_file() and Path(path+"/indexed_dev").is_file() and Path(path+"/indexed_test").is_file()):
@@ -791,7 +789,7 @@ def Define_Sets(path,training_fraction,NN):
                 if Path(path+"/"+set_key+"_set").is_file():
                     os.remove(path+"/"+set_key+"_set")
 
-            Create_New_Sets(path,training_fraction,timelist, NN=True) # create sets
+            Create_New_Sets(path,training_fraction,indices, NN=True) # create sets
 
         # If recreating is not requested, attempt to load the sets
         elif Q == "N" or Q == "n":
@@ -810,7 +808,7 @@ def Define_Sets(path,training_fraction,NN):
 
                 # ensure set sizes are correct
                 assert len(sets['dev']) - len(sets['test']) < 1
-                assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
+                assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == len(indices)
 
             else: # if the sets cannot be found, delete any current sets and create new sets
 
@@ -823,7 +821,7 @@ def Define_Sets(path,training_fraction,NN):
                     if Path(path+"/"+set_key+"_set").is_file():
                         os.remove(path+"/"+set_key+"_set")
 
-                Create_New_Sets(path,training_fraction,timelist, NN=True) # create sets
+                Create_New_Sets(path,training_fraction,indices, NN=True) # create sets
 
         else: # if response was something other tha Y or N
             print("Operation aborted")
@@ -852,7 +850,7 @@ def Define_Sets(path,training_fraction,NN):
 
                 # ensure set sizes are correct
                 assert len(sets['dev']) - len(sets['test']) < 1
-                assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == timelist[-1]
+                assert len(sets['dev']) + len(sets['test']) + len(sets['train']) == len(indices)
 
             else: # for LDA
 
@@ -875,7 +873,7 @@ def Define_Sets(path,training_fraction,NN):
                         os.remove(path+"/"+set_key+"_set")
 
                 # create new sets
-                Create_New_Sets(path,training_fraction,timelist,NN=True)
+                Create_New_Sets(path,training_fraction,indices,NN=True)
 
             else: # for LDA
 
@@ -885,7 +883,7 @@ def Define_Sets(path,training_fraction,NN):
                         os.remove(path+"/LDA_"+set_key+"_set")
 
                 # create new sets
-                Create_New_Sets(path,training_fraction,timelist,NN=False)
+                Create_New_Sets(path,training_fraction,indices,NN=False)
 
 ### load or create vocabulary and load or create indexed versions of comments in sets
 
@@ -1148,7 +1146,7 @@ def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
         for saved_file in required_files:
             if Path(path+'/'+saved_file).is_file():
                 os.remove(path+'/'+saved_file)
-        missing_file == len(required_files)
+        missing_file = len(required_files)
 
     # if there are no saved corpus files
     if missing_file == len(required_files):
@@ -1162,12 +1160,6 @@ def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
 
         frequency = defaultdict(int) # initialize a dictionary for frequencies
 
-        for comment in f: # for each comment
-            for token in comment.split(): # for each word
-                frequency[token] += 1 # update the number of occurrences
-
-        f.seek(0) # go back to the beginning of the file
-
         # initialize a list for the corpus
         texts = []
         eval_comments = []
@@ -1179,12 +1171,9 @@ def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
 
         for index,comment in enumerate(f): # for each comment
 
-            document = [] # initialize a bag of words
-            if len(comment.strip().split()) == 1:
-                document.append(comment.strip())
-            else:
-                for word in comment.strip().split(): # for each word
-                    document.append(word)
+            document=comment.strip().split() # initialize a bag of words
+            for token in document: # for each word
+                frequency[token]+=1 # update the number of occurrences
 
             if index in LDA_sets['train']: # if it belongs in the training set
 
@@ -1197,7 +1186,11 @@ def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
                 eval_comments.append(document) # add the BOW to the corpus
 
             else: # if the index is in neither set, raise an Exception
-                raise Exception('Error in processing comment indices')
+                # TODO: Check if the config file setting is to randomly sample.
+                # If not, raise an exception.
+                # if ENTIRE_CORPUS:
+                #   raise Exception('Error in processing comment indices')
+                continue
 
         # write the number of words in the frequency-filtered corpus to file
         with open(path+'/train_word_count','w') as u:

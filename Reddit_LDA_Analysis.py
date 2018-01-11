@@ -11,6 +11,9 @@ from Utils import *
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
+# Are we using a random subset of comments, or the whole dataset?
+ENTIRE_CORPUS=False
+
 ### determine hyperparameters ###
 
 ### Pre-processing hyperparameters
@@ -34,6 +37,8 @@ alpha = 0.1 # determines how many high probability topics will be assigned to a 
 minimum_probability = 0.01 # minimum acceptable probability for an output topic across corpus
 eta = 0.1 # determines how many high probability words will be assigned to a topic in general
 minimum_phi_value = 0.01 # determines the lower bound on per-term topic probability. Only matters if per_word_topics = True.
+n_random_comments = 1500 # number of comments to sample from each year for
+# training
 
 ### Paths
 
@@ -105,11 +110,14 @@ Parse_Rel_RC_Comments(dates,path,stop,vote_counting=True,NN=False, write_origina
 
 ### create training and evaluation sets
 
+if not ENTIRE_CORPUS:
+    select_random_comments(path, n_random_comments)
+
 ## Determine the comments that will comprise each set
 
 # NOTE: If NN = False, will create sets for LDA.
 
-Define_Sets(path,training_fraction,NN=False)
+Define_Sets(path,training_fraction,NN=False, all_=ENTIRE_CORPUS)
 
 ## read the data and create the vocabulary and the term-document matrix
 
