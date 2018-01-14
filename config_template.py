@@ -1,3 +1,10 @@
+import nltk
+import os
+import sys
+
+# Set to True when processing for the NN
+NN=False
+
 # Are we using a random subset of comments, or the whole dataset?
 ENTIRE_CORPUS=False
 
@@ -45,3 +52,9 @@ for year in years:
 ## where the output will be stored
 # NOTE: To avoid confusion between different kinds of models, record the variables most important to your iteration in the folder name
 output_path = path + "/LDA_Full_"+str(num_topics)
+
+### Preprocessing ###
+
+### determine the set of stopwords used in preprocessing
+nltk.download('stopwords')
+stop = set(nltk.corpus.stopwords.words('english'))

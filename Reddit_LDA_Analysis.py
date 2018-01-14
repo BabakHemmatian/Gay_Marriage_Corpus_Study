@@ -32,12 +32,6 @@ print("Alpha = " + str(alpha),file=perf)
 print("Eta = " + str(eta),file=perf)
 print("Minimum phi value = " + str(minimum_phi_value),file=perf)
 
-### Preprocessing ###
-
-### determine the set of stopwords used in preprocessing
-
-stop = set(nltk.corpus.stopwords.words('english'))
-
 ### call the parsing function
 
 # NOTE: If NN = False, will pre-process data for LDA.
@@ -45,7 +39,7 @@ stop = set(nltk.corpus.stopwords.words('english'))
 # NOTE: If clean_raw = True, the compressed data files will be removed from disk after processing
 # NOTE: Relevance filters can be changed from Utils.py. Do not forget to change the Parser function accordingly
 
-Parse_Rel_RC_Comments(dates,path,stop,vote_counting=True,NN=False, write_original=True,download_raw=True,clean_raw=False)
+Parse_Rel_RC_Comments()
 
 ## call the function for calculating the percentage of relevant comments
 
@@ -54,19 +48,19 @@ Parse_Rel_RC_Comments(dates,path,stop,vote_counting=True,NN=False, write_origina
 ### create training and evaluation sets
 
 if not ENTIRE_CORPUS:
-    select_random_comments(path, n_random_comments)
+    select_random_comments()
 
 ## Determine the comments that will comprise each set
 
 # NOTE: If NN = False, will create sets for LDA.
 
-Define_Sets(path,training_fraction,NN=False, all_=ENTIRE_CORPUS)
+Define_Sets()
 
 ## read the data and create the vocabulary and the term-document matrix
 
 # NOTE: Needs loaded sets. Use Define_Sets() before running this function even if prepared sets exist on file
 
-dictionary, corpus, eval_comments, train_word_count, eval_word_count = LDA_Corpus_Processing(path, no_below, no_above, MaxVocab)
+dictionary, corpus, eval_comments, train_word_count, eval_word_count = LDA_Corpus_Processing()
 
 ### Train and Test the LDA Model ###
 
@@ -112,7 +106,7 @@ train_per_word_perplex,eval_per_word_perplex = Get_Perplexity(ldamodel,corpus,ev
 
 ### Calculate the number of relevant comments by year
 
-relevant_year,cumm_rel_year = Yearly_Counts(path)
+relevant_year,cumm_rel_year = Yearly_Counts()
 
 ### go through the corpus and calculate the contribution of each topic to comment content in each year
 
@@ -126,7 +120,8 @@ relevant_year,cumm_rel_year = Yearly_Counts(path)
 
 ## Load or calculate topic distributions and create an enhanced version of the entire dataset
 
-yr_topic_cont, indexed_dataset = Get_Topic_Contribution(path,output_path,dictionary,ldamodel,relevant_year,cumm_rel_year,num_topics)
+yr_topic_cont, indexed_dataset = Get_Topic_Contribution(dictionary, ldamodel,
+    relevant_year, cumm_rel_year)
 
 ### Determine the Top Topics
 
@@ -159,10 +154,10 @@ with open(output_path+'/top_words','a+') as f: # create a file for storing the h
 
 # NOTE: This function only outputs the probabilities for comments of length at least [min_comm_length] with non-zero probability assigned to at least one top topic
 
-theta = Get_Top_Topic_Theta(path,output_path,indexed_dataset,report,dictionary,ldamodel,min_comm_length)
+theta = Get_Top_Topic_Theta(indexed_dataset, report, dictionary, ldamodel)
 
 ### for the top topics, choose the [sample_comments] comments that reflect the greatest contribution of those topics and write them to file
 
 # NOTE: If write_original was set to False during the initial parsing, this function will require the original compressed data files (and will be much slower). If not in the same directory as this file, change the "path" argument
 
-Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_rel_year)
+Get_Top_Comments(report, cumm_rel_year)

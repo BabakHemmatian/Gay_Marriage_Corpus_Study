@@ -32,9 +32,9 @@ from functools import partial
 from contextlib import contextmanager
 from threading import Thread, Lock
 import hashlib
-nltk.download('stopwords')
 nltk.download('punkt')
 nltk.download('wordnet')
+from config import *
 
 ### Global Set keys
 
@@ -402,8 +402,9 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
 #       https://files.pushshift.io/reddit/comments/.
 #   clean_raw: Delete the raw data file when finished.
 
-def Parse_Rel_RC_Comments(dates,path,stop,vote_counting, NN, write_original,
-                          download_raw, clean_raw):
+def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
+                          vote_counting=True, write_original=True,
+                          download_raw=True, clean_raw=False):
 
     # check input arguments for valid type
     assert type(vote_counting) is bool
@@ -510,7 +511,7 @@ def Parse_Rel_RC_Comments(dates,path,stop,vote_counting, NN, write_original,
 
 ### calculate the yearly relevant comment counts
 
-def Yearly_Counts(path):
+def Yearly_Counts(path=path):
 
     # check for monthly relevant comment counts
     if not Path(path+'/RC_Count_List').is_file():
@@ -571,7 +572,8 @@ def _select_n(n, iterable):
 #       Defaults to 5000.
 #   overwrite: If the sample file for the year exists, skip.
 
-def select_random_comments(path, n, years_to_sample=years, min_n_comments=5000,
+def select_random_comments(path=path, n=n_random_comments,
+                           years_to_sample=years, min_n_comments=5000,
                            overwrite=False):
     # File to write random comment indices to
     fout='random_indices'
@@ -747,7 +749,8 @@ def Create_New_Sets(path,training_fraction,indices,NN):
 
 ### function for loading, calculating, or recalculating sets
 
-def Define_Sets(path,training_fraction,NN,all_=False):
+def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
+                all_=ENTIRE_CORPUS):
 
     # ensure the arguments have the correct types and values
 
@@ -1107,7 +1110,8 @@ def Get_Votes(path):
 
 ### Function for reading and indexing a pre-processed corpus for LDA
 
-def LDA_Corpus_Processing(path,no_below,no_above,MaxVocab):
+def LDA_Corpus_Processing(path=path, no_below=no_below, no_above=no_above,
+                          MaxVocab=MaxVocab):
 
     # check the existence of pre-processed data and sets
     if not Path(path+'/lda_prep').is_file():
@@ -1748,7 +1752,9 @@ def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_y
 
 ### Function that checks for a topic contribution matrix on file and calls for its calculation if there is none
 
-def Get_Topic_Contribution(path,output_path,dictionary,ldamodel,relevant_year,cumm_rel_year,num_topics):
+def Get_Topic_Contribution(dictionary, ldamodel, relevant_year, cumm_rel_year,
+                           num_topics=num_topics, path=path,
+                           output_path=output_path):
 
     # check to see if topic contributions have already been calculated
     if not Path(output_path+'/yr_topic_cont').is_file(): # if not
@@ -1785,7 +1791,7 @@ def Get_Topic_Contribution(path,output_path,dictionary,ldamodel,relevant_year,cu
 
 ### Define a function for plotting the temporal trends in the top topics
 
-def Plotter(report,yr_topic_cont,name):
+def Plotter(report, yr_topic_cont, name):
 
     plotter = []
     for topic in report:
@@ -1872,7 +1878,9 @@ def Top_Topics_Theta_Multicore(indexed_dataset,report,dictionary,ldamodel,min_co
 
 ### Function that calls for calculating, re-calculating or loading theta estimations for top topics
 
-def Get_Top_Topic_Theta(path,output_path,indexed_dataset,report,dictionary,ldamodel,min_comm_length):
+def Get_Top_Topic_Theta(indexed_dataset, report, dictionary, ldamodel,
+                        min_comm_length=min_comm_length, path=path,
+                        output_path=output_path):
 
     # check to see if theta for top topics has already been calculated
 
@@ -1942,7 +1950,8 @@ def Top_Comment_Indices(theta,report,sample_comments):
 
 # IDEA: Should add the possibility of sampling from specific year(s)
 
-def Get_Top_Comments(path,output_path,theta,report,sample_comments,stop, cumm_rel_year):
+def Get_Top_Comments(report, cumm_rel_year, path=path, output_path=output_path,
+                     theta=theta, sample_comments=sample_comments, stop=stop):
 
     # timer
     print("Started sampling top comments at " + time.strftime('%l:%M%p'))
