@@ -32,9 +32,10 @@ from functools import partial
 from contextlib import contextmanager
 from threading import Thread, Lock
 import hashlib
+import tzlocal
 nltk.download('punkt')
 nltk.download('wordnet')
-from config import *
+from lda_config import *
 
 ### Global Set keys
 
@@ -49,7 +50,29 @@ Max     = {key: [] for key in set_key_list}
 vote     = {key: [] for key in set_key_list} # for NN
 V = OrderedDict({}) # vocabulary
 
-years=range(2006, 2018)
+### Function for writing parameters and model performance to file
+
+def Write_Performance(output_path=output_path):
+    with open(output_path+"/Performance",'a+') as perf:
+        if NN==False:
+            print("***",file=perf)
+            print("Time: "+time.strftime("%Y-%m-%d %H:%M:%S"),file=perf)
+            print("*** Hyperparameters ***", file=perf)
+            print("Training fraction = " + str(training_fraction),file=perf)
+            print("Maximum vocabulary size = " + str(MaxVocab),file=perf)
+            print("Minimum number of documents a token can appear in and be included = " + str(no_below),file=perf)
+            print("Fraction of documents, tokens appearing more often than which will be filtered out = " + str(no_above),file=perf)
+            print("Number of topics = " + str(num_topics),file=perf)
+            print("Fraction of topics sampled = " + str(sample_topics),file=perf)
+            print("Number of top words recorded for each topic = " + str(topn),file=perf)
+            print("Number of comments sampled from each top topic = " + str(sample_comments),file=perf)
+            print("Minimum comment length for sampled comments = " + str(min_comm_length),file=perf)
+            print("Alpha (LDA) = " + str(alpha),file=perf)
+            print("Eta (LDA) = " + str(eta),file=perf)
+            print("Minimum topic probability = " + str(minimum_probability),file=perf)
+            print("Minimum term probability = " + str(minimum_phi_value),file=perf)
+
+        ## TODO: Write a separate set of variables to file for NN
 
 ### Functions for data file retrieval
 
@@ -73,16 +96,23 @@ def download(year, month, path):
 ## Get Reddit compressed data file hashsums to check downloaded files' integrity
 
 def Get_Hashsums(path):
+    # notify the user
     print ('Retrieving hashsums to check file integrity')
-    hashsums = {}
+    # set the URL to download hashsums from
     url='https://files.pushshift.io/reddit/comments/sha256sums'
-    if not Path(path+'/sha256sums').is_file():
-        os.system('cd {} && wget {}'.format(path, url))
+    # remove any old hashsum file
+    if Path(path+'/sha256sums').is_file():
+        os.remove(path+'/sha256sums')
+    # download hashsums
+    os.system('cd {} && wget {}'.format(path, url))
+    # retrieve the correct hashsums
+    hashsums = {}
     with open(path+'/sha256sums','rb') as f:
         for line in f:
             if line.strip() != "":
                 (val, key) = str(line).split()
                 hashsums[key] = val
+
     return hashsums
 
 ## calculate hashsums for downloaded files in chunks of size 4096B
@@ -233,8 +263,21 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
 
         filesum = sha256(filename) # calculate hashsum for the data file on disk
 
+        # if filesum != hashsums[filename]:
+        #     print("Warning! Hashsum check failed for "+filename)
+        # else:
+        #     print("Hashsum check passed for "+filename)
+        attempt = 0 # number of hashsum check trials for the current file
         while filesum != hashsums[filename]: # if the file hashsum does not match the correct hashsum
-            print("Corrupt data file detected. Re-downloading") # notify the user
+
+            attempt += 1 # update hashsum check counter
+            if attempt == 5: # if failed hashsum check three times, ignore the error to prevent an infinite loop
+                print("Failed to pass hashsum check 5 times. Ignoring the error.")
+                break
+
+            # notify the user
+            print("Corrupt data file detected")
+            print("Expected hashsum value: "+hashsums[filename]+"\nBut calculated: "+filesum)
             os.remove(path+'/'+filename) # remove the corrupted file
             download(year,month,path) # download it again
 
@@ -298,9 +341,8 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
 
                         # if we are interested in the sign of the votes
                         if vote_counting == True:
-                            # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
-                            print(np.sign(int(comment["score"])),end="\n",file=vote)
-                            # record the number of documents by year and month
+                            # write the votes to file
+                            print(int(comment["score"]),end="\n",file=vote)
 
                         # update monthly comment counts
                         created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
@@ -336,7 +378,7 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
                         # if we are interested in the sign of the votes
                         if vote_counting == True:
                             # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
-                            print(np.sign(int(comment["score"])),end="\n",file=vote)
+                            print(int(comment["score"]),end="\n",file=vote)
 
                         # record the number of documents by year and month
                         created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
@@ -402,6 +444,8 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
 #       https://files.pushshift.io/reddit/comments/.
 #   clean_raw: Delete the raw data file when finished.
 
+# TODO: Replace mentions of Vote in this file with mentions of sample_ratings
+
 def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
                           vote_counting=True, write_original=True,
                           download_raw=True, clean_raw=False):
@@ -461,8 +505,8 @@ def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
             if NN == True:
                 if not Path(path+"/votes").is_file():
                     missing_files += 1
-            if not Path(path+"/RC_Count_Dict").is_file():
-                missing_files += 1
+            # if not Path(path+"/RC_Count_Dict").is_file():
+            #     missing_files += 1
 
             # if there are missing files, delete any partial record and parse again
             if missing_files != 0:
@@ -478,8 +522,8 @@ def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
                     os.remove(path+"/lda_prep")
                 if Path(path+"/RC_Count_List").is_file():
                     os.remove(path+"/RC_Count_List")
-                if Path(path+"/RC_Count_Dict").is_file():
-                    os.remove(path+"/RC_Count_Dict")
+                # if Path(path+"/RC_Count_Dict").is_file():
+                #     os.remove(path+"/RC_Count_Dict")
 
                 # check for the presence of data files
                 if not glob.glob(path+'/*.bz2'):
@@ -498,8 +542,8 @@ def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
         if NN == True:
             if Path(path+"/votes").is_file():
                 os.remove(path+"/votes")
-        if Path(path+"/RC_Count_Dict").is_file():
-            os.remove(path+"/RC_Count_Dict")
+        # if Path(path+"/RC_Count_Dict").is_file():
+        #     os.remove(path+"/RC_Count_Dict")
 
         # check for the presence of data files
         if not glob.glob(path+'/*.bz2'):
@@ -546,12 +590,15 @@ def Yearly_Counts(path=path):
 
             else: # for the other years, subtract the last two cummulative values to find the number of relevant comments in that year
 
-                relevant_year.append(number - relevant_year[-1])
+                relevant_year.append(number - cumm_rel_year[-2])
 
             month_counter = 0 # reset the counter at the end of the year
 
+    assert sum(relevant_year) == cumm_rel_year[-1]
+    assert cumm_rel_year[-1] == timelist[-1]
+
     return relevant_year,cumm_rel_year
-        
+
 ### Helper function for select_random_comments
 
 def _select_n(n, iterable):
@@ -580,7 +627,7 @@ def select_random_comments(path=path, n=n_random_comments,
 
     if path[-1]!='/':
         path+='/'
-    fout=path+fout 
+    fout=path+fout
     if ( not overwrite and os.path.exists(fout) ):
         print ("{} exists. Skipping. Set overwrite to True to overwrite.".format(fout))
         return
@@ -590,13 +637,16 @@ def select_random_comments(path=path, n=n_random_comments,
     ct_lu=dict((y, i) for i, y in enumerate(years))
     early_years=[ yr for yr in years_to_sample if
                   ct_peryear[ct_lu[yr]]<min_n_comments ]
+
     # Make sure the early_years actually contains the first years in years, if
     # any. Otherwise the order that indices are written to file won't make any
     # sense.
+
     assert all([ early_years[i]==early_years[i-1]+1 for i in range(1,
                  len(early_years)) ])
     assert all([ yr==yr_ for yr, yr_ in zip(early_years,
                  years_to_sample[:len(early_years)]) ])
+
     later_years=[ yr for yr in years_to_sample if yr not in early_years ]
     with open(fout, 'w') as wfh:
         if len(early_years)>0:
@@ -612,7 +662,7 @@ def select_random_comments(path=path, n=n_random_comments,
             wfh.write('\n')
 
     return
-               
+
 ### determine what percentage of the posts in each year was relevant based on content filters
 
 # NOTE: Requires total comment counts (RC_Count_Total) from http://files.pushshift.io/reddit/comments/
@@ -621,18 +671,20 @@ def select_random_comments(path=path, n=n_random_comments,
 def Rel_Counter(path):
 
     # check paths
-    if not Path(path+"/RC_Count_Dict").is_file():
-        raise Exception('Monthly counts cannot be found')
+    # if not Path(path+"/RC_Count_Dict").is_file():
+    #     raise Exception('Monthly counts cannot be found')
+    if not Path(path+"/RC_Count_List").is_file():
+        raise Exception('Cumulative monthly comment counts could not be found')
     if not Path(path+"/RC_Count_Total").is_file():
-        raise Exception('Total monthly comment counts cannot be found')
+        raise Exception('Total monthly comment counts could not be found')
 
-    # load relevant monthly counts
-    with open(path+"/RC_Count_Dict",'r') as f:
-        timedict = dict()
-        for line in f:
-            if line.strip() != "":
-                (key, val) = line.split()
-                timedict[key] = int(val)
+    # # load relevant monthly counts
+    # with open(path+"/RC_Count_Dict",'r') as f:
+    #     timedict = dict()
+    #     for line in f:
+    #         if line.strip() != "":
+    #             (key, val) = line.split()
+    #             timedict[key] = int(val)
 
     # load the total monthly counts into a dictionary
     d = {}
@@ -651,19 +703,23 @@ def Rel_Counter(path):
         else:
             total_year[str(keys[3:7])] = d[keys]
 
-    # calculate the relevant yearly counts
-    relevant_year = {}
-    for key in timedict:
-        if str(key[:4]) in relevant_year:
-            relevant_year[str(key[:4])] += timedict[key]
-        else:
-            relevant_year[str(key[:4])] = timedict[key]
+    # # calculate the relevant yearly counts
+    # relevant_year = {}
+    # for key in timedict:
+    #     if str(key[:4]) in relevant_year:
+    #         relevant_year[str(key[:4])] += timedict[key]
+    #     else:
+    #         relevant_year[str(key[:4])] = timedict[key]
+    relevant_year, _ = Yearly_Counts(path)
+    relevant = {}
+    for idx,year in enumerate(relevant_year):
+        relevant[str(2006+idx)] = year
 
     # calculate the percentage of comments in each year that was relevant and write it to file
     perc_rel = {}
     rel = open(path+"/perc_rel",'a+')
-    for key in relevant_year:
-        perc_rel[key] = float(relevant_year[key]) / float(total_year[key])
+    for key in relevant:
+        perc_rel[key] = float(relevant[key]) / float(total_year[key])
     print(sorted(perc_rel.items()),file=rel)
     rel.close
 
@@ -691,13 +747,41 @@ def Perc_Rel_RC_Comment(path):
 
 ### function to determine comment indices for new training, development and test sets
 
-def Create_New_Sets(path,training_fraction,indices,NN):
+def Create_New_Sets(regression,path,output_path,training_fraction,indices,NN,all_):
 
     print("Creating sets")
 
-    # determine indices of set elements
+    # determine number of comments in the dataset
+    if all_: # if doing NN or processing the entire corpus for LDA
 
-    num_comm = len(indices) # number of comments
+        if regression==False: # if not doing regression on sampled comments
+
+            num_comm = indices[-1] # retrieve the total number of comments
+            indices = range(num_comm) # define sets over all comments
+
+        else: # if doing regression on sampled comments
+
+            # check to see if human comment ratings can be found on disk
+            if not Path(output_path+'/sample_ratings.csv').is_file():
+                raise Exception("Human comment ratings for regressor training could not be found on file.")
+
+            # retrieve the number of comments for which there are complete human ratings
+            with open(output_path+'/sample_ratings.csv','r+b') as csvfile:
+                reader = csv.reader(csvfile)
+                human_ratings = [] # initialize counter for the number of valid human ratings
+                # read human data for sampled comments one by one
+                for idx,row in enumerate(reader):
+                    row = row[0].split(",")
+                    # ignore headers and record the index of comments that are interpretable and that have ratings for all three goal variables
+                    if idx != 0 and (row[7] == 'Y' or row[7] == 'y') and is_number(row[4]) and is_number(row[5]) and is_number(row[6]):
+                        human_ratings.append(int(row[1]))
+
+            num_comm = len(human_ratings) # the number of valid samples for network training
+            indices = human_ratings # define sets over sampled comments with human ratings
+
+    else: # if using LDA on a random subsample of the comments
+        num_comm = len(indices) # total number of sampled comments
+        # in this case, the input indices do comprise the set we're looking for
 
     num_train = int(ceil(training_fraction * num_comm)) # size of training set
 
@@ -723,7 +807,7 @@ def Create_New_Sets(path,training_fraction,indices,NN):
 
         # write the sets to file
         for set_key in set_key_list:
-            with open(path+'/'+set_key+'_set','a+') as f:
+            with open(path+'/'+set_key+'_set_'+str(regression),'a+') as f:
                 for index in sets[set_key]:
                     print(index,end='\n',file=f)
 
@@ -743,16 +827,25 @@ def Create_New_Sets(path,training_fraction,indices,NN):
 
         # write the sets to file
         for set_key in LDA_set_keys:
-            with open(path+'/LDA_'+set_key+'_set','a+') as f:
+            with open(path+'/LDA_'+set_key+'_set_'+str(all_),'a+') as f:
                 for index in LDA_sets[set_key]:
                     print(index,end='\n',file=f)
 
 ### function for loading, calculating, or recalculating sets
 
-def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
+# helper function for checking if a string is a number
+
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
+
+def Define_Sets(regression,path=path, training_fraction=training_fraction, NN=NN,
                 all_=ENTIRE_CORPUS):
 
-    # ensure the arguments have the correct types and values
+    ## ensure the arguments have the correct types and values
 
     assert type(path) is str
     assert 0 < training_fraction and 1 > training_fraction
@@ -774,7 +867,7 @@ def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
     indices=map(int, indices)
 
     # if indexed comments are available (NN)
-    if (NN == True and Path(path+"/indexed_train").is_file() and Path(path+"/indexed_dev").is_file() and Path(path+"/indexed_test").is_file()):
+    if (NN == True and Path(path+"/indexed_train_"+str(regression)).is_file() and Path(path+"/indexed_dev_"+str(regression)).is_file() and Path(path+"/indexed_test_"+str(regression)).is_file()):
 
         # determine if the comments and their relevant indices should be deleted and re-initialized or the sets should just be loaded
         Q = raw_input("Indexed comments are already available. Do you wish to delete sets and create new ones [Y/N]?")
@@ -787,23 +880,23 @@ def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
 
             # delete previous record
             for set_key in set_key_list:
-                if Path(path+"/indexed_"+set_key).is_file():
-                    os.remove(path+"/indexed_"+set_key)
-                if Path(path+"/"+set_key+"_set").is_file():
-                    os.remove(path+"/"+set_key+"_set")
+                if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file():
+                    os.remove(path+"/indexed_"+set_key+"_"+str(regression))
+                if Path(path+"/"+set_key+"_set_"+str(regression)).is_file():
+                    os.remove(path+"/"+set_key+"_set_"+str(regression))
 
-            Create_New_Sets(path,training_fraction,indices, NN=True) # create sets
+            Create_New_Sets(regression,path,output_path,training_fraction,indices, NN, all_) # create sets
 
         # If recreating is not requested, attempt to load the sets
         elif Q == "N" or Q == "n":
 
             # if the sets are found, load them
-            if Path(path+"/train_set").is_file() and Path(path+"/dev_set").is_file() and Path(path+"/test_set").is_file():
+            if Path(path+"/train_set_"+str(regression)).is_file() and Path(path+"/dev_set_"+str(regression)).is_file() and Path(path+"/test_set_"+str(regression)).is_file():
 
                 print("Loading sets from file")
 
                 for set_key in set_key_list:
-                    with open(path+'/'+set_key + '_set','r') as f:
+                    with open(path+'/'+set_key + '_set_' + str(regression),'r') as f:
                         for line in f:
                             if line.strip() != "":
                                 sets[set_key].append(int(line))
@@ -819,12 +912,12 @@ def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
 
                 # delete partial record
                 for set_key in set_key_list:
-                    if Path(path+"/indexed_"+set_key).is_file():
-                        os.remove(path+"/indexed_"+set_key)
+                    if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file():
+                        os.remove(path+"/indexed_"+set_key+"_"+str(regression))
                     if Path(path+"/"+set_key+"_set").is_file():
-                        os.remove(path+"/"+set_key+"_set")
+                        os.remove(path+"/"+set_key+"_set_"+str(regression))
 
-                Create_New_Sets(path,training_fraction,indices, NN=True) # create sets
+                Create_New_Sets(regression,path,output_path,training_fraction,indices, NN, all_) # create sets
 
         else: # if response was something other tha Y or N
             print("Operation aborted")
@@ -835,17 +928,17 @@ def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
         # delete any possible partial indexed set
         if NN == True:
             for set_key in set_key_list:
-                if Path(path+"/indexed_"+set_key).is_file():
-                    os.remove(path+"/indexed_"+set_key)
+                if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file():
+                    os.remove(path+"/indexed_"+set_key+"_"+str(regression))
 
         # check to see if there are sets available, if so load them
-        if (NN == True and Path(path+"/train_set").is_file() and Path(path+"/dev_set").is_file() and Path(path+"/test_set").is_file()) or (NN == False and Path(path+"/LDA_train_set").is_file() and Path(path+"/LDA_eval_set").is_file()):
+        if (NN == True and Path(path+"/train_set_"+str(regression)).is_file() and Path(path+"/dev_set_"+str(regression)).is_file() and Path(path+"/test_set_"+str(regression)).is_file()) or (NN == False and Path(path+"/LDA_train_set_"+str(all_)).is_file() and Path(path+"/LDA_eval_set_"+str(all_)).is_file()):
 
             print("Loading sets from file")
 
             if NN == True: # for NN
                 for set_key in set_key_list:
-                    with open(path+'/'+set_key + '_set','r') as f:
+                    with open(path+'/'+set_key + '_set_'+str(regression),'r') as f:
                         for line in f:
                             if line.strip() != "":
                                 sets[set_key].append(int(line))
@@ -858,7 +951,7 @@ def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
             else: # for LDA
 
                 for set_key in LDA_set_keys:
-                    with open(path+"/LDA_"+set_key+"_set",'r') as f:
+                    with open(path+"/LDA_"+set_key+"_set_"+str(all_),'r') as f:
                         for line in f:
                             if line.strip() != "":
                                 LDA_sets[set_key].append(int(line))
@@ -870,29 +963,29 @@ def Define_Sets(path=path, training_fraction=training_fraction, NN=NN,
 
                 # delete any partial set
                 for set_key in set_key_list:
-                    if Path(path+"/indexed_"+set_key).is_file():
-                        os.remove(path+"/indexed_"+set_key)
-                    if Path(path+"/"+set_key+"_set").is_file():
-                        os.remove(path+"/"+set_key+"_set")
+                    if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file():
+                        os.remove(path+"/indexed_"+set_key+"_"+str(regression))
+                    if Path(path+"/"+set_key+"_set_"+str(regression)).is_file():
+                        os.remove(path+"/"+set_key+"_set_"+str(regression))
 
                 # create new sets
-                Create_New_Sets(path,training_fraction,indices,NN=True)
+                Create_New_Sets(regression,path,output_path,training_fraction,indices,NN, all_)
 
             else: # for LDA
 
                 # delete any partial set
                 for set_key in LDA_set_keys:
-                    if Path(path+"/LDA_"+set_key+"_set").is_file():
-                        os.remove(path+"/LDA_"+set_key+"_set")
+                    if Path(path+"/LDA_"+set_key+"_set_"+str(all_)).is_file():
+                        os.remove(path+"/LDA_"+set_key+"_set_"+str(all_))
 
                 # create new sets
-                Create_New_Sets(path,training_fraction,indices,NN=False)
+                Create_New_Sets(regression,path,output_path,training_fraction,indices,NN,all_)
 
 ### load or create vocabulary and load or create indexed versions of comments in sets
 
 # NOTE: Only for NN. For LDA we use gensim's dictionary functions
 
-def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
+def Index_Set(regression,path,set_key,MaxVocab,FrequencyFilter):
 
     # ensure the arguments have the correct type
     assert type(path) is str
@@ -917,13 +1010,13 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
         raise Exception('Pre-processed dataset could not be found')
 
     # if indexed comments are available and we are trying to index the training set
-    if Path(path+"/indexed_"+set_key).is_file() and set_key == 'train':
+    if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file() and set_key == 'train':
 
         # If the vocabulary is available, load it
-        if Path(path+"/dict").is_file():
+        if Path(path+"/dict_"+str(regression)).is_file():
             print("Loading dictionary from file")
 
-            with open(path+"/dict",'r') as f:
+            with open(path+"/dict_"+str(regression),'r') as f:
                 for line in f:
                     if line.strip() != "":
                         (key, val) = line.split()
@@ -932,15 +1025,15 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
         else: # if the vocabulary is not available
 
             # delete the possible dictionary-less indexed training set file
-            if Path(path+"/indexed_"+set_key).is_file():
-                os.remove(path+"/indexed_"+set_key)
+            if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file():
+                os.remove(path+"/indexed_"+set_key+"_"+str(regression))
 
     # if indexed comments are available, load them
-    if Path(path+"/indexed_"+set_key).is_file():
+    if Path(path+"/indexed_"+set_key+"_"+str(regression)).is_file():
 
         print("Loading the set from file")
 
-        with open(path+"/indexed_"+set_key,'r') as f:
+        with open(path+"/indexed_"+set_key+"_"+str(regression),'r') as f:
             for line in f:
                 assert line.strip() != ""
                 comment = []
@@ -961,7 +1054,7 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
 
         ## read the dataset and index the relevant comments
 
-        fin.seek(0)
+        fin.seek(0) # go to the beginning of the data file
         for counter,comm in enumerate(fin): # for each comment
 
             if counter in sets[set_key]: # if it belongs in the set
@@ -1031,14 +1124,14 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
         ## save the vocabulary to file
 
         if set_key == 'train':
-            vocab = open(path+"/dict",'a+')
+            vocab = open(path+"/dict_"+str(regression),'a+')
             for word,index in V.iteritems():
                 print(word+" "+str(index),file=vocab)
             vocab.close
 
         ## save the indexed datasets to file
 
-        with open(path+"/indexed_"+set_key,'a+') as f:
+        with open(path+"/indexed_"+set_key+"_"+str(regression),'a+') as f:
             for comment in indexes[set_key]:
                 assert len(comment) != 0
                 for ind,word in enumerate(comment):
@@ -1053,77 +1146,77 @@ def Index_Set(path,set_key,MaxVocab,FrequencyFilter):
     # timer
     print("Finished indexing the "+set_key+" set at " + time.strftime('%l:%M%p'))
 
-### turn votes into one-hot vectors
-
-def One_Hot_Vote(vote_list):
-
-    one_hot_vote = []
-
-    for sign in vote_list:
-        if int(sign) == -1:
-            one_hot_vote.append([1,0,0])
-        elif int(sign) == 0:
-            one_hot_vote.append([0,1,0])
-        elif int(sign) == 1:
-            one_hot_vote.append([0,0,1])
-
-        else:
-            raise Exception('Votes could not be appended')
-
-    return one_hot_vote
-
-### import the correct labels for comment votes
-
-def Get_Votes(path):
-
-    # look for data on disk
-    if Path(path+"/votes").is_file():
-
-        # load the votes or raise an error if a vote is not assigned to a set
-        for set_key in set_key_list:
-            vote[set_key] = []
-
-        with open(path+"/votes",'r') as f:
-            for index,sign in enumerate(f):
-                sign = sign.strip()
-                match_found = 0
-                for set_key in set_key_list:
-                    if index in sets[set_key]:
-                        vote[set_key].append(sign)
-                        match_found += 1
-
-                if match_found == 0:
-                    raise Exception('Votes could not be read from file')
-
-        # ensure the datasets have the right sizes
-        assert len(indexes['train']) == len(vote['train'])
-        assert len(indexes['dev']) == len(vote['dev'])
-        assert len(indexes['test']) == len(vote['test'])
-
-    else: # if votes cannot be found on file
-        raise Exception('Labels for the sets could not be found')
-
-    # turn the votes into one-hot vectors
-    for set_key in set_key_list:
-        vote[set_key] = One_Hot_Vote(vote[set_key])
-    return vote['train'],vote['dev'],vote['test']
+# ### turn votes into one-hot vectors (only for classifier NN - Not language model or regression)
+#
+# def One_Hot_Vote(vote_list):
+#
+#     one_hot_vote = []
+#
+#     for sign in vote_list:
+#         if int(sign) == -1:
+#             one_hot_vote.append([1,0,0])
+#         elif int(sign) == 0:
+#             one_hot_vote.append([0,1,0])
+#         elif int(sign) == 1:
+#             one_hot_vote.append([0,0,1])
+#
+#         else:
+#             raise Exception('Votes could not be appended')
+#
+#     return one_hot_vote
+#
+# ### import the correct labels for comment votes (only for classifier NN)
+#
+# def Get_Votes(path):
+#
+#     # look for data on disk
+#     if Path(path+"/votes").is_file():
+#
+#         # load the votes or raise an error if a vote is not assigned to a set
+#         for set_key in set_key_list:
+#             vote[set_key] = []
+#
+#         with open(path+"/votes",'r') as f:
+#             for index,sign in enumerate(f):
+#                 sign = sign.strip()
+#                 match_found = 0
+#                 for set_key in set_key_list:
+#                     if index in sets[set_key]:
+#                         vote[set_key].append(sign)
+#                         match_found += 1
+#
+#                 if match_found == 0:
+#                     raise Exception('Votes could not be read from file')
+#
+#         # ensure the datasets have the right sizes
+#         assert len(indexes['train']) == len(vote['train'])
+#         assert len(indexes['dev']) == len(vote['dev'])
+#         assert len(indexes['test']) == len(vote['test'])
+#
+#     else: # if votes cannot be found on file
+#         raise Exception('Labels for the sets could not be found')
+#
+#     # turn the votes into one-hot vectors
+#     for set_key in set_key_list:
+#         vote[set_key] = One_Hot_Vote(vote[set_key])
+#     return vote['train'],vote['dev'],vote['test']
 
 ### Function for reading and indexing a pre-processed corpus for LDA
 
 def LDA_Corpus_Processing(path=path, no_below=no_below, no_above=no_above,
-                          MaxVocab=MaxVocab):
+                          MaxVocab=MaxVocab,all_=ENTIRE_CORPUS):
 
     # check the existence of pre-processed data and sets
     if not Path(path+'/lda_prep').is_file():
         raise Exception('Pre-processed data could not be found')
-    if not Path(path+'/LDA_train_set').is_file() or not Path(path+'/LDA_eval_set').is_file():
+    if not Path(path+'/LDA_train_set_'+str(all_)).is_file() or not Path(path+'/LDA_eval_set_'+str(all_)).is_file():
         raise Exception('Comment sets could not be found')
 
     # open the file storing pre-processed comments
     f = open(path+'/lda_prep','r')
 
     # check to see if the corpus has previously been processed
-    required_files = ['LDA_Reddit_Corpus.mm','LDA_Reddit_Eval.mm','LDA_Reddit_Dict.dict','train_word_count','eval_word_count']
+    required_files = ['RC_LDA_Corpus_'+str(all_)+'.mm','RC_LDA_Eval_'+str(all_)+'.mm','RC_LDA_Dict_'+str(all_)+'.dict','train_word_count_'+str(all_),'eval_word_count_'+str(all_)]
     missing_file = 0
     for saved_file in required_files:
         if not Path(path+'/'+saved_file).is_file():
@@ -1131,14 +1224,14 @@ def LDA_Corpus_Processing(path=path, no_below=no_below, no_above=no_above,
 
     # if there is a complete extant record, load it
     if missing_file == 0:
-        corpus = gensim.corpora.MmCorpus(path+'/LDA_Reddit_Corpus.mm')
-        eval_comments = gensim.corpora.MmCorpus(path+'/LDA_Reddit_Eval.mm')
-        dictionary = gensim.corpora.Dictionary.load(path+'/LDA_Reddit_Dict.dict')
-        with open(path+'/train_word_count') as g:
+        corpus = gensim.corpora.MmCorpus(path+'/RC_LDA_Corpus_'+str(all_)+'.mm')
+        eval_comments = gensim.corpora.MmCorpus(path+'/RC_LDA_Eval_'+str(all_)+'.mm')
+        dictionary = gensim.corpora.Dictionary.load(path+'/RC_LDA_Dict_'+str(all_)+'.dict')
+        with open(path+'/train_word_count_'+str(all_)) as g:
             for line in g:
                 if line.strip() != "":
                     train_word_count = int(line)
-        with open(path+'/eval_word_count') as h:
+        with open(path+'/eval_word_count_'+str(all_)) as h:
             for line in h:
                 if line.strip() != "":
                     eval_word_count = int(line)
@@ -1160,10 +1253,6 @@ def LDA_Corpus_Processing(path=path, no_below=no_below, no_above=no_above,
 
         f.seek(0) # go to the beginning of the file
 
-        ## record word frequency in the entire dataset
-
-        frequency = defaultdict(int) # initialize a dictionary for frequencies
-
         # initialize a list for the corpus
         texts = []
         eval_comments = []
@@ -1175,33 +1264,41 @@ def LDA_Corpus_Processing(path=path, no_below=no_below, no_above=no_above,
 
         for index,comment in enumerate(f): # for each comment
 
-            document=comment.strip().split() # initialize a bag of words
-            for token in document: # for each word
-                frequency[token]+=1 # update the number of occurrences
-
             if index in LDA_sets['train']: # if it belongs in the training set
+
+                document = [] # initialize a bag of words
+                if len(comment.strip().split()) == 1:
+                    document.append(comment.strip())
+                else:
+                    for word in comment.strip().split(): # for each word
+                        document.append(word)
 
                 train_word_count += len(document)
                 texts.append(document) # add the BOW to the corpus
 
             elif index in LDA_sets['eval']: # if in evaluation set
 
+                document = [] # initialize a bag of words
+                if len(comment.strip().split()) == 1:
+                    document.append(comment.strip())
+                else:
+                    for word in comment.strip().split(): # for each word
+                        document.append(word)
+
                 eval_word_count += len(document)
                 eval_comments.append(document) # add the BOW to the corpus
 
-            else: # if the index is in neither set, raise an Exception
-                # TODO: Check if the config file setting is to randomly sample.
-                # If not, raise an exception.
-                # if ENTIRE_CORPUS:
-                #   raise Exception('Error in processing comment indices')
+            else: # if the index is in neither set and we're processing the entire corpus, raise an Exception
+                if all_:
+                    raise Exception('Error in processing comment indices')
                 continue
 
         # write the number of words in the frequency-filtered corpus to file
-        with open(path+'/train_word_count','w') as u:
+        with open(path+'/train_word_count_'+str(all_),'w') as u:
             print(train_word_count,file=u)
 
         # write the number of words in the frequency-filtered evaluation set to file
-        with open(path+'/eval_word_count','w') as w:
+        with open(path+'/eval_word_count_'+str(all_),'w') as w:
             print(eval_word_count,file=w)
 
         ## create the dictionary
@@ -1209,14 +1306,14 @@ def LDA_Corpus_Processing(path=path, no_below=no_below, no_above=no_above,
         dictionary = gensim.corpora.Dictionary(texts,prune_at=MaxVocab) # training set
         dictionary.add_documents(eval_comments,prune_at=MaxVocab) # add evaluation set
         dictionary.filter_extremes(no_below=no_below, no_above=no_above, keep_n=MaxVocab) # filter extremes
-        dictionary.save(path+"/LDA_Reddit_Dict.dict") # save dictionary to file for future use
+        dictionary.save(path+'/RC_LDA_Dict_'+str(all_)+'.dict') # save dictionary to file for future use
 
         ## create the Bag of Words (BOW) datasets
 
         corpus = [dictionary.doc2bow(text) for text in texts] # turn training comments into BOWs
         eval_comments = [dictionary.doc2bow(text) for text in eval_comments] # turn evaluation comments into BOWs
-        gensim.corpora.MmCorpus.serialize(path+'/LDA_Reddit_Corpus.mm', corpus) # save indexed data to file for future use (overwrites any previous versions)
-        gensim.corpora.MmCorpus.serialize(path+'/LDA_Reddit_Eval.mm', eval_comments) # save the evaluation set to file
+        gensim.corpora.MmCorpus.serialize(path+'/RC_LDA_Corpus_'+str(all_)+'.mm', corpus) # save indexed data to file for future use (overwrites any previous versions)
+        gensim.corpora.MmCorpus.serialize(path+'/RC_LDA_Eval_'+str(all_)+'.mm', eval_comments) # save the evaluation set to file
 
         # timer
         print("Finished creating the dictionary and the term-document matrices at "+time.strftime('%l:%M%p'))
@@ -1293,7 +1390,7 @@ def Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_co
 
 # NOTE: This function will in the future be removed and integrated into the main parser
 
-def Get_Indexed_Dataset(path,cumm_rel_year):
+def Get_Indexed_Dataset(path,cumm_rel_year,all_=ENTIRE_CORPUS):
 
     with open(path+'/lda_prep','r') as f:
 
@@ -1301,12 +1398,21 @@ def Get_Indexed_Dataset(path,cumm_rel_year):
 
         year_counter = 0 # the first year in the corpus (2006)
 
+        if not all_:
+            assert Path(path+'random_indices').is_file()
+            with open(path+'random_indices') as g:
+                rand_subsample = []
+                for line in g:
+                    if line.strip() != "":
+                        rand_subsample.append(int(line))
+
         for comm_index,comment in enumerate(f): # for each comment
 
             if comm_index >= cumm_rel_year[year_counter]:
                 year_counter += 1 # update the year counter if need be
 
-            indexed_dataset.append((comm_index,comment,year_counter)) # append the comment and the relevant year to the dataset
+            if all_ or (not all_ and comm_index in rand_subsample):
+                indexed_dataset.append((comm_index,comment,year_counter)) # append the comment and the relevant year to the dataset
 
     return indexed_dataset
 
@@ -1803,7 +1909,7 @@ def Plotter(report, yr_topic_cont, name):
     plt.legend(loc='best')
     plt.xlabel('Year (2006-'+str(2006+len(plotter[0])-1)+')')
     plt.ylabel('Topic Probability')
-    plt.title('Contribution of the top ten topics to the LDA model 2006-'+str(2006+len(plotter[0])-1))
+    plt.title('Contribution of the top topics to the LDA model for 2006-'+str(2006+len(plotter[0])-1))
     plt.grid(True)
     plt.savefig(name)
     plt.show()
@@ -1930,19 +2036,21 @@ def Get_Top_Topic_Theta(indexed_dataset, report, dictionary, ldamodel,
 
 def Top_Comment_Indices(theta,report,sample_comments):
 
-    top_topic_probs = {} # initialize a dictionary for comment indices
-    sampled_indices = np.zeros([len(report),sample_comments]) # initialize a numpy array for storing sampled comment indices
-    sampled_probs = np.zeros_like(sampled_indices) # initialize a numpy array for storing top topic contribution to sampled comments
+    top_topic_probs = {} # initialize a dictionary for all top comment indices
+    sampled_indices = {} # initialize a dictionary for storing sampled comment indices
+    sampled_probs = {} # initialize a list for storing top topic contribution to sampled comments
 
-    for idx,topic in enumerate(report): # for each top topic
+    for topic in report: # for each top topic
         # find all comments with significant contribution from that topic
-        top_topic_probs[idx] = [element for element in theta if element[1] == topic]
-        top_topic_probs[idx] = sorted(top_topic_probs[idx], key=lambda x: x[2],reverse=True) # sort them based on topic contribution
+        top_topic_probs[topic] = [element for element in theta if element[1] == topic]
+        top_topic_probs[topic] = sorted(top_topic_probs[topic], key=lambda x: x[2],reverse=True) # sort them based on topic contribution
 
         # find the [sample_comments] comments for each top topic that show the greatest contribution
-        for rank,element in enumerate(top_topic_probs[idx][:sample_comments]):
-            sampled_indices[idx,rank] = element[0] # record the index
-            sampled_probs[idx,rank] = element[2] # record the contribution of the topic
+        sampled_indices[topic] = []
+        sampled_probs[topic] = []
+        for element in top_topic_probs[topic][:min(len(top_topic_probs[topic]),sample_comments)]:
+            sampled_indices[topic].append(element[0]) # record the index
+            sampled_probs[topic].append(element[2]) # record the contribution of the topic
 
     return sampled_indices,sampled_probs
 
@@ -1950,8 +2058,8 @@ def Top_Comment_Indices(theta,report,sample_comments):
 
 # IDEA: Should add the possibility of sampling from specific year(s)
 
-def Get_Top_Comments(report, cumm_rel_year, path=path, output_path=output_path,
-                     theta=theta, sample_comments=sample_comments, stop=stop):
+def Get_Top_Comments(report, cumm_rel_year, theta, path=path, output_path=output_path,
+                     sample_comments=sample_comments, stop=stop):
 
     # timer
     print("Started sampling top comments at " + time.strftime('%l:%M%p'))
@@ -1977,7 +2085,7 @@ def Get_Top_Comments(report, cumm_rel_year, path=path, output_path=output_path,
         # open a CSV file for recording sampled comment values
         with open(output_path+'/sample_ratings.csv','a+b') as csvfile:
             writer = csv.writer(csvfile) # initialize the CSV writer
-            writer.writerow(['number','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
+            writer.writerow(['number','index','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
 
         # iterate through the files in the 'path' directory in alphabetic order
         for filename in sorted(os.listdir(path)):
@@ -2020,33 +2128,36 @@ def Get_Top_Comments(report, cumm_rel_year, path=path, output_path=output_path,
                             if counter-1 >= cumm_rel_year[year_counter]:
                                 year_counter += 1
 
-                            if counter-1 in sampled_indices: # see if the comment is among the sampled ones
+                            for topic,indices in sampled_indices.iteritems():
+                                if counter-1 in indices:
 
-                                # remove mid-comment lines and set encoding
-                                original_body = original_body.replace("\n","")
-                                original_body = original_body.encode("utf-8")
+                                    # remove mid-comment lines and set encoding
+                                    original_body = original_body.replace("\n","")
+                                    original_body = original_body.encode("utf-8")
 
-                                # update the sample counter
-                                sample += 1
+                                    # update the sample counter
+                                    sample += 1
 
-                                # print the sample number to file
-                                print(sample,file=fout)
+                                    # print the sample number to file
+                                    print(sample,file=fout)
 
-                                # print relevant year to file
-                                print('Year: '+str(2006+year_counter),file=fout)
+                                    # print relevant year to file
+                                    print('Year: '+str(2006+year_counter),file=fout)
 
-                                # print the topic to file
-                                itemindex = np.where(sampled_indices==counter-1) # determine which top topic the comment belongs to
-                                print('Topic '+str(report[itemindex[0][0]]),file=fout)
+                                    # print the topic to file
+                                    print('Topic '+str(topic),file=fout)
 
-                                # print the topic contribution to the comment to file
-                                print('Contribution: '+str(sampled_probs[itemindex[0][0],itemindex[1][0]]),file=fout)
+                                    # print the topic contribution to the comment to file
+                                    itemindex = sampled_indices[topic].index(counter-1)
+                                    print('Contribution: '+str(sampled_probs[topic][itemindex]),file=fout)
 
-                                # print the comment to file
-                                print(" ".join(original_body.strip().split()),file=fout)
+                                    # print the comment to file
+                                    print(" ".join(original_body.strip().split()),file=fout)
 
-                                # print the values to CSV file
-                                writer.writerow([sample,report[itemindex[0][0]],sampled_probs[itemindex[0][0],itemindex[1][0]]])
+                                    # print the values to CSV file
+                                    writer.writerow([sample,counter-1,topic,sampled_probs[topic][itemindex]])
+
+                                    break # if you found the index in one of the topics, no reason to keep looking
 
                 # close the files to save the data
                 fin.close()
@@ -2067,33 +2178,36 @@ def Get_Top_Comments(report, cumm_rel_year, path=path, output_path=output_path,
 
             for comm_index,comment in enumerate(fin): # iterate over the original comments
 
-                if comm_index in sampled_indices: # see if the comment is among the sampled ones
+                for topic,indices in sampled_indices.iteritems():
+                    if counter-1 in indices:
 
-                    # update the year counter if need be
-                    if comm_index >= cumm_rel_year[year_counter]:
-                        year_counter += 1
+                        # update the year counter if need be
+                        if comm_index >= cumm_rel_year[year_counter]:
+                            year_counter += 1
 
-                    # update the sample counter
-                    sample += 1
+                        # update the sample counter
+                        sample += 1
 
-                    # print the sample number to file
-                    print(sample,file=fout)
+                        # print the sample number to file
+                        print(sample,file=fout)
 
-                    # print the relevant year to file
-                    print('Year: '+str(2006+year_counter),file=fout)
+                        # print the relevant year to file
+                        print('Year: '+str(2006+year_counter),file=fout)
 
-                    # print the topic to output file
-                    itemindex = np.where(sampled_indices==comm_index) # determine which top topic the comment belongs to
-                    print('Topic '+str(report[itemindex[0][0]]),file=fout)
+                        # print the topic to output file
+                        print('Topic '+str(topic),file=fout)
 
-                    # print the topic contribution to the comment to file
-                    print('Contribution: '+str(sampled_probs[itemindex[0][0],itemindex[1][0]]),file=fout)
+                        # print the topic contribution to the comment to file
+                        itemindex = sampled_indices[topic].index(counter-1)
+                        print('Contribution: '+str(sampled_probs[topic][itemindex]),file=fout)
 
-                    # print the comment to output file
-                    print(" ".join(original_body.strip().split()),file=fout)
+                        # print the comment to output file
+                        print(" ".join(original_body.strip().split()),file=fout)
 
-                    # print the values to CSV file
-                    writer.writerow([sample,report[itemindex[0][0]],sampled_probs[itemindex[0][0],itemindex[1][0]]])
+                        # print the values to CSV file
+                        writer.writerow([sample,comm_index,topic,sampled_probs[topic][itemindex]])
+
+                        break # if you found the index in one of the topics, no reason to keep looking
 
             # timer
             print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
