@@ -1358,7 +1358,7 @@ def CpuInfo():
 
 ### Get lower bounds on per-word perplexity for training and development sets (LDA)
 
-def Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_count,eval_word_count,perf):
+def Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_count,eval_word_count):
 
     # timer
     print("Started calculating perplexity at "+time.strftime('%l:%M%p'))
@@ -1378,11 +1378,12 @@ def Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_co
 
     ## Print and save the per-word perplexity values to file
 
-    print("*** Perplexity ***",file=perf)
-    print("Lower bound on per-word perplexity (using "+str(training_fraction)+" percent of documents as training set): "+str(train_per_word_perplex))
-    print("Lower bound on per-word perplexity (using "+str(training_fraction)+" percent of documents as training set): "+str(train_per_word_perplex),file=perf)
-    print("Lower bound on per-word perplexity (using "+str(1-training_fraction)+" percent of held-out documents as evaluation set): "+str(eval_per_word_perplex))
-    print("Lower bound on per-word perplexity (using "+str(1-training_fraction)+" percent of held-out documents as evaluation set): "+str(eval_per_word_perplex),file=perf)
+    with open(output_path+"/Performance",'a+') as perf:
+        print("*** Perplexity ***",file=perf)
+        print("Lower bound on per-word perplexity (using "+str(training_fraction)+" percent of documents as training set): "+str(train_per_word_perplex))
+        print("Lower bound on per-word perplexity (using "+str(training_fraction)+" percent of documents as training set): "+str(train_per_word_perplex),file=perf)
+        print("Lower bound on per-word perplexity (using "+str(1-training_fraction)+" percent of held-out documents as evaluation set): "+str(eval_per_word_perplex))
+        print("Lower bound on per-word perplexity (using "+str(1-training_fraction)+" percent of held-out documents as evaluation set): "+str(eval_per_word_perplex),file=perf)
 
     return train_per_word_perplex,eval_per_word_perplex
 
@@ -1457,12 +1458,14 @@ def Get_Indexed_Dataset(path,cumm_rel_year,all_=ENTIRE_CORPUS):
 #                         analyzed_comment_length += 1 # update comment word counter
 #
 #             else: # if comment consists of more than one word
-                # topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
-                # for word,topic_set in topics[0][1]: # iterate over the words
-                    # if len(topic_set) != 0: # if the model has predictions for the specific word
-                    #     # record the most likely topic according to the trained model
-                    #     dxt[topic_set[0],0] += 1
-                    #     analyzed_comment_length += 1 # update word counter
+                # topics = ldamodel.get_document_topics(dictionary.doc2bow(indexed_comment[1].strip().split()),per_word_topics=True) # get per-word topic probabilities for the document
+                # for wt_tuple in topics[1]: # iterate over the word-topic assignments
+                #
+                #     if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
+                #
+                #         # record the most likely topic according to the trained model
+                #         dxt[wt_tuple[1][0],0] += 1
+                #         analyzed_comment_length += 1 # update word counter
 #
 #             if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
 #                 dxt = (float(1) / float(len(comment))) * dxt # normalize the topic contribution using comment length (should it be analyzed_comment_length or length?)
@@ -1512,12 +1515,15 @@ def info(title):
 #                     analyzed_comment_length += 1 # update comment word counter
 #
 #         else: # if comment consists of more than one word
-            # topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
-            # for word,topic_set in topics[0][1]: # iterate over the words
-                # if len(topic_set) != 0: # if the model has predictions for the specific word
-                #     # record the most likely topic according to the trained model
-                #     dxt[topic_set[0],0] += 1
-                #     analyzed_comment_length += 1 # update word counter
+            # topics = ldamodel.get_document_topics(dictionary.doc2bow(indexed_comment[1].strip().split()),per_word_topics=True) # get per-word topic probabilities for the document
+
+            # for wt_tuple in topics[1]: # iterate over the word-topic assignments
+            #
+            #     if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
+            #
+            #         # record the most likely topic according to the trained model
+            #         dxt[wt_tuple[1][0],0] += 1
+            #         analyzed_comment_length += 1 # update word counter
 #
 #         lock.acquire()
 #         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
@@ -1657,15 +1663,14 @@ def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
 
     else: # if comment consists of more than one word
 
-        topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
+        topics = ldamodel.get_document_topics(dictionary.doc2bow(indexed_comment[1].strip().split()),per_word_topics=True) # get per-word topic probabilities for the document
 
-        for word,topic_set in topics[0][1]: # iterate over the words
+        for wt_tuple in topics[1]: # iterate over the word-topic assignments
 
-            if len(topic_set) != 0: # if the model has predictions for the specific word
+            if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
 
                 # record the most likely topic according to the trained model
-                dxt[topic_set[0],0] += 1
-
+                dxt[wt_tuple[1][0],0] += 1
                 analyzed_comment_length += 1 # update word counter
 
     if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
@@ -1768,16 +1773,15 @@ def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_y
 #                 analyzed_comment_length += 1 # update word counter
 #
     # else: # if comment consists of more than one word
-    #     topics = ldamodel.get_document_topics(indexed_comment[1],per_word_topics=True) # get per-word topic probabilities for the document
+        # topics = ldamodel.get_document_topics(dictionary.doc2bow(indexed_comment[1].strip().split()),per_word_topics=True) # get per-word topic probabilities for the document
     #
-    #     for word,topic_set in topics[0][1]: # iterate over the words
-    #
-    #         if len(topic_set) != 0: # if the model has predictions for the specific word
-    #
-    #             # record the most likely topic according to the trained model
-    #             dxt[topic_set[0],0] += 1
-    #
-    #             analyzed_comment_length += 1 # update word counter
+        # for wt_tuple in topics[1]: # iterate over the word-topic assignments
+        #
+        #     if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
+        #
+        #         # record the most likely topic according to the trained model
+        #         dxt[wt_tuple[1][0],0] += 1
+        #         analyzed_comment_length += 1 # update word counter
 #
 #
 #     if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
