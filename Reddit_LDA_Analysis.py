@@ -4,33 +4,21 @@
 ### import the required modules and functions
 
 from __future__ import print_function
-from config import *
+from lda_config import *
 from Utils import *
 
 ### set default file encoding
 reload(sys)
 sys.setdefaultencoding('utf-8')
 
+### Create directory for storing the output if it does not already exist
 if not os.path.exists(output_path):
     print("Creating directory to store the output")
     os.makedirs(output_path)
 
-## create file to record the performance
+### Write hyperparameters and performance to file
 
-perf = open(output_path+"/Performance",'a+')
-
-# write the hyperparameters to file
-print("*** Hyperparameters ***", file=perf)
-print("Training fraction = " + str(training_fraction),file=perf)
-print("Maximum vocabulary size = " + str(MaxVocab),file=perf)
-print("Frequency filter threshold = " + str(FrequencyFilter),file=perf)
-print("Minimum number of documents a token can appear in and be included = " + str(no_below),file=perf)
-print("Fraction of documents, tokens appearing more often than which will be filtered out = " + str(no_above),file=perf)
-print("Number of topics = " + str(num_topics),file=perf)
-print("Minimum topic probability = " + str(minimum_probability),file=perf)
-print("Alpha = " + str(alpha),file=perf)
-print("Eta = " + str(eta),file=perf)
-print("Minimum phi value = " + str(minimum_phi_value),file=perf)
+Write_Performance()
 
 ### call the parsing function
 
@@ -39,7 +27,7 @@ print("Minimum phi value = " + str(minimum_phi_value),file=perf)
 # NOTE: If clean_raw = True, the compressed data files will be removed from disk after processing
 # NOTE: Relevance filters can be changed from Utils.py. Do not forget to change the Parser function accordingly
 
-Parse_Rel_RC_Comments()
+Parse_Rel_RC_Comments(vote_counting=True,download_raw=False)
 
 ## call the function for calculating the percentage of relevant comments
 
@@ -54,7 +42,7 @@ if not ENTIRE_CORPUS:
 
 # NOTE: If NN = False, will create sets for LDA.
 
-Define_Sets()
+Define_Sets(regression=False)
 
 ## read the data and create the vocabulary and the term-document matrix
 
@@ -74,7 +62,7 @@ workers = CpuInfo()
 
 ### Train or load a trained model
 
-if not Path(path+'/Reddit_LDA_'+str(num_topics)+'.lda').is_file(): # if there are no trained models, train on the corpus
+if not Path(path+'/RC_LDA_'+str(num_topics)+'_'+str(ENTIRE_CORPUS)+'.lda').is_file(): # if there are no trained models, train on the corpus
 
     # timer
     print("Started training LDA model at "+time.strftime('%l:%M%p'))
@@ -82,7 +70,7 @@ if not Path(path+'/Reddit_LDA_'+str(num_topics)+'.lda').is_file(): # if there ar
     # define and train the LDA model
     Lda = gensim.models.ldamulticore.LdaMulticore
     ldamodel = Lda(corpus, workers = workers, num_topics=num_topics, id2word = dictionary, iterations=iterations, alpha=alpha, eta=eta, random_state=seed, minimum_probability=minimum_probability, per_word_topics=True, minimum_phi_value=minimum_phi_value)
-    ldamodel.save('Reddit_LDA_'+str(num_topics)+'.lda') # save learned model to file for future use
+    ldamodel.save('RC_LDA_'+str(num_topics)+'_'+str(ENTIRE_CORPUS)+'.lda') # save learned model to file for future use
 
     # timer
     print("Finished training model at "+time.strftime('%l:%M%p'))
@@ -91,7 +79,7 @@ else: # if there is a trained model, load it from file
 
     print("Loading the trained LDA model from file")
 
-    ldamodel = gensim.models.LdaMulticore.load(path+'/Reddit_LDA_'+str(num_topics)+'.lda')
+    ldamodel = gensim.models.LdaMulticore.load(path+'/RC_LDA_'+str(num_topics)+'_'+str(ENTIRE_CORPUS)+'.lda')
 
 ### calculate a lower bound on per-word perplexity for training and evaluation sets
 
@@ -160,4 +148,4 @@ theta = Get_Top_Topic_Theta(indexed_dataset, report, dictionary, ldamodel)
 
 # NOTE: If write_original was set to False during the initial parsing, this function will require the original compressed data files (and will be much slower). If not in the same directory as this file, change the "path" argument
 
-Get_Top_Comments(report, cumm_rel_year)
+Get_Top_Comments(report, cumm_rel_year, theta)
