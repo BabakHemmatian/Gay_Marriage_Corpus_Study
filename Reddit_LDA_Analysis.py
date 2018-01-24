@@ -4,7 +4,7 @@
 ### import the required modules and functions
 
 from __future__ import print_function
-from lda_config import *
+from config import *
 from Utils import *
 
 ### set default file encoding

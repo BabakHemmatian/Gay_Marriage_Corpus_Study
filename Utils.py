@@ -35,7 +35,7 @@ import hashlib
 import tzlocal
 nltk.download('punkt')
 nltk.download('wordnet')
-from lda_config import *
+from config import *
 
 ### Global Set keys
 
