@@ -2183,7 +2183,7 @@ def Get_Top_Comments(report, cumm_rel_year, theta, path=path, output_path=output
             for comm_index,comment in enumerate(fin): # iterate over the original comments
 
                 for topic,indices in sampled_indices.iteritems():
-                    if counter-1 in indices:
+                    if comm_index in indices:
 
                         # update the year counter if need be
                         if comm_index >= cumm_rel_year[year_counter]:
@@ -2202,7 +2202,7 @@ def Get_Top_Comments(report, cumm_rel_year, theta, path=path, output_path=output
                         print('Topic '+str(topic),file=fout)
 
                         # print the topic contribution to the comment to file
-                        itemindex = sampled_indices[topic].index(counter-1)
+                        itemindex = sampled_indices[topic].index(comm_index)
                         print('Contribution: '+str(sampled_probs[topic][itemindex]),file=fout)
 
                         # print the comment to output file
