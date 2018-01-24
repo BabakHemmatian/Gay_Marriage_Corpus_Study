@@ -604,7 +604,7 @@ def Yearly_Counts(path=path):
 def _select_n(n, iterable):
     if len(iterable)<n:
         return iterable
-    return np.random.choice(iterable, size=n)
+    return np.random.choice(iterable, size=n, replace=False)
 
 #### Writes the indices of n comments from each year in years to file.
 
