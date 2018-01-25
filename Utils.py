@@ -624,10 +624,12 @@ def select_random_comments(path=path, n=n_random_comments,
                            overwrite=False):
     # File to write random comment indices to
     fout='random_indices'
+    fcounts='random_indices_count'
 
     if path[-1]!='/':
         path+='/'
     fout=path+fout
+    fcounts=path+fcounts
     if ( not overwrite and os.path.exists(fout) ):
         print ("{} exists. Skipping. Set overwrite to True to overwrite.".format(fout))
         return
@@ -648,18 +650,30 @@ def select_random_comments(path=path, n=n_random_comments,
                  years_to_sample[:len(early_years)]) ])
 
     later_years=[ yr for yr in years_to_sample if yr not in early_years ]
+
+    # Record the number of indices sampled per year
+    nixs=defaultdict(int)
+
     with open(fout, 'w') as wfh:
         if len(early_years)>0:
             fyear, lyear=early_years[0], early_years[-1]
             start=ct_cumyear[ct_lu[fyear-1]] if fyear-1 in ct_lu else 0
-            wfh.write('\n'.join(map(str, sorted(_select_n(n,
-                      range(start, ct_cumyear[ct_lu[lyear]]))))))
+            ixs=sorted(_select_n(n, range(start, ct_cumyear[ct_lu[lyear]])))
+            for ix in ixs:
+                nixs[years[[ ct>ix for ct in ct_cumyear ].index(True)]]+=1
+            assert sum(nixs.values())==len(ixs)
+            wfh.write('\n'.join(map(str, ixs)))
             wfh.write('\n')
         for year in later_years:
             start=ct_cumyear[ct_lu[year-1]]
-            wfh.write('\n'.join(map(str, sorted(_select_n(n,
-                      range(start, ct_cumyear[ct_lu[year]]))))))
+            ixs=sorted(_select_n(n, range(start, ct_cumyear[ct_lu[year]]))) 
+            nixs[year]=len(ixs)
+            wfh.write('\n'.join(map(str, ixs)))
             wfh.write('\n')
+
+    with open(fcounts, 'w') as wfh:
+        wfh.write('\n'.join('{} {}'.format(k, v) for k, v in
+                  sorted(nixs.iteritems(), key=lambda kv: kv[0])))
 
     return
 
