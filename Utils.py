@@ -666,7 +666,7 @@ def select_random_comments(path=path, n=n_random_comments,
             wfh.write('\n')
         for year in later_years:
             start=ct_cumyear[ct_lu[year-1]]
-            ixs=sorted(_select_n(n, range(start, ct_cumyear[ct_lu[year]]))) 
+            ixs=sorted(_select_n(n, range(start, ct_cumyear[ct_lu[year]])))
             nixs[year]=len(ixs)
             wfh.write('\n'.join(map(str, ixs)))
             wfh.write('\n')
@@ -674,8 +674,6 @@ def select_random_comments(path=path, n=n_random_comments,
     with open(fcounts, 'w') as wfh:
         wfh.write('\n'.join('{} {}'.format(k, v) for k, v in
                   sorted(nixs.iteritems(), key=lambda kv: kv[0])))
-
-    return
 
 ### determine what percentage of the posts in each year was relevant based on content filters
 
@@ -1414,8 +1412,8 @@ def Get_Indexed_Dataset(path,cumm_rel_year,all_=ENTIRE_CORPUS):
         year_counter = 0 # the first year in the corpus (2006)
 
         if not all_:
-            assert Path(path+'random_indices').is_file()
-            with open(path+'random_indices') as g:
+            assert Path(path+'/random_indices').is_file()
+            with open(path+'/random_indices') as g:
                 rand_subsample = []
                 for line in g:
                     if line.strip() != "":
@@ -1699,27 +1697,43 @@ def Topic_Asgmt_Retriever_Multi(indexed_comment,dictionary,ldamodel,num_topics):
 
 ### Define the main function for multi-core calculation of topic contributions
 
-def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_year,cumm_rel_year,num_topics):
+def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,
+                    relevant_year,cumm_rel_year,num_topics,all_=ENTIRE_CORPUS):
 
     # timer
     print("Started calculating topic contribution at " + time.strftime('%l:%M%p'))
 
     ## check for the existence of the preprocessed dataset
-
     if not Path(path+'/lda_prep').is_file():
         raise Exception('The preprocessed data could not be found')
+
+    ## load yearly counts for randomly sampled comments if needed
+
+    # check for access to counts
+    if not all_ and not Path(path+'/random_indices_count').is_file():
+        raise Exception('The year by year counts for randomly sampled comments could not be found')
+    # load counts
+    if not all_:
+        with open(path+'/random_indices_count') as f:
+            random_counts = []
+            for line in f:
+                line = line.replace("\n","")
+                if line.strip() != "":
+                    (key, val) = line.split()
+                    random_counts.append(val)
 
     ## initialize shared vectors for yearly topic contributions
 
     global Yearly_Running_Sums
     Yearly_Running_Sums = {}
+    no_years = len(cumm_rel_year) if all_ else len(random_counts)
 
     ## Create shared counters for comments for which the model has no reasonable prediction whatsoever
 
     global no_predictions
     no_predictions = {}
 
-    for i in range(len(cumm_rel_year)):
+    for i in range(no_years):
         Yearly_Running_Sums[i] = Shared_Contribution_Array(num_topics)
         no_predictions[i] = Shared_Counter(initval=0)
 
@@ -1743,15 +1757,18 @@ def Topic_Contribution_Multicore(path,output_path,dictionary,ldamodel,relevant_y
     ## Gather yearly topic contribution estimates in one matrix
 
     yearly_output = []
-    for i in range(len(cumm_rel_year)):
+    for i in range(no_years):
         yearly_output.append(Yearly_Running_Sums[i].val[:])
 
     yearly_output = np.asarray(yearly_output)
 
     ## normalize contributions using the number of documents per year
-
-    for i in range(len(cumm_rel_year)): # for each year
-        yearly_output[i,:] = ( float(1) / (float(relevant_year[i]) - no_predictions[i].value )) * yearly_output[i,:]
+    if all_: # if processing all comments
+        for i in range(no_years): # for each year
+            yearly_output[i,:] = ( float(1) / (float(relevant_year[i]) - no_predictions[i].value )) * yearly_output[i,:]
+    else: # if processing a random subsample
+        for i in range(no_years):
+            yearly_output[i,:] = ( float(1) / (float(random_counts[i]) - no_predictions[i].value )) * yearly_output[i,:]
 
     np.savetxt(output_path+"/yr_topic_cont", yearly_output) # save the topic contribution matrix to file
 
@@ -2192,7 +2209,7 @@ def Get_Top_Comments(report, cumm_rel_year, theta, path=path, output_path=output
             sample = 0 # initialize a counter for the sampled comments
             year_counter = 0 # initialize a counter for the comment's year
             writer = csv.writer(csvfile) # initialize the CSV writer
-            writer.writerow(['number','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
+            writer.writerow(['number','index','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
 
             for comm_index,comment in enumerate(fin): # iterate over the original comments
 
@@ -2220,7 +2237,7 @@ def Get_Top_Comments(report, cumm_rel_year, theta, path=path, output_path=output
                         print('Contribution: '+str(sampled_probs[topic][itemindex]),file=fout)
 
                         # print the comment to output file
-                        print(" ".join(original_body.strip().split()),file=fout)
+                        print(" ".join(comment.strip().split()),file=fout)
 
                         # print the values to CSV file
                         writer.writerow([sample,comm_index,topic,sampled_probs[topic][itemindex]])
