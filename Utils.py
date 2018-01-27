@@ -621,7 +621,7 @@ def _select_n(n, iterable):
 
 def select_random_comments(path=path, n=n_random_comments,
                            years_to_sample=years, min_n_comments=5000,
-                           overwrite=False):
+                           overwrite=OVERWRITE):
     # File to write random comment indices to
     fout='random_indices'
     fcounts='random_indices_count'

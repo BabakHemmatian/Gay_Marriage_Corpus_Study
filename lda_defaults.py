@@ -3,12 +3,14 @@ import os
 import sys
 
 # Set to True when processing for the NN
-NN=False
+NN = False
+
+# If True, overwrite existing files
+OVERWRITE = False
 
 # Are we using a random subset of comments, or the whole dataset? The names of output files will include the value of this variable
 # NOTE: Should be set to True if NN==True
-
-ENTIRE_CORPUS= False
+ENTIRE_CORPUS = False
 
 ### determine hyperparameters ###
 
