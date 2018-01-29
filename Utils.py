@@ -1988,7 +1988,7 @@ def Top_Topics_Theta_Multicore(indexed_dataset,report,dictionary,ldamodel,min_co
 
         else: # if filtering based on comment length
 
-            if len(document[1]) > min_comm_length: # filter out short comments
+            if len(document[1].strip().split()) > min_comm_length: # filter out short comments
 
                 # add a tuple including comment index, bag of words representation and relevant year to the dataset
                 dataset.append((document[0],dictionary.doc2bow(document[1].strip().split()),document[2]))
