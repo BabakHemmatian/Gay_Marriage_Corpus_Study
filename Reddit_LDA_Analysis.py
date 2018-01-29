@@ -31,7 +31,8 @@ Parse_Rel_RC_Comments(vote_counting=True,download_raw=False)
 
 ## call the function for calculating the percentage of relevant comments
 
-# Perc_Rel_RC_Comment(path)
+if calculate_perc_rel:
+    Perc_Rel_RC_Comment(path)
 
 ### create training and evaluation sets
 
@@ -86,7 +87,8 @@ else: # if there is a trained model, load it from file
 # NOTE: This function writes the estimates after calculation to the file "perf"
 # NOTE: This is a slow, serial function with no method for looking for previous estimates. Check the disk manually and comment out if estimates already exist
 
-train_per_word_perplex,eval_per_word_perplex = Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_count,eval_word_count)
+if calculate_perplexity:
+    train_per_word_perplex,eval_per_word_perplex = Get_Perplexity(ldamodel,corpus,eval_comments,training_fraction,train_word_count,eval_word_count)
 
 ### Determine Top Topics Based on Contribution to the Model ###
 
