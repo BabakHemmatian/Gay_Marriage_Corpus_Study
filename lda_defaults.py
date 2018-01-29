@@ -2,18 +2,21 @@ import nltk
 import os
 import sys
 
-# Set to True when processing for the NN
-NN = False
-
-# If True, overwrite existing files
-OVERWRITE = False
-
-# Are we using a random subset of comments, or the whole dataset? The names of
-# output files will include the value of this variable
-# NOTE: Should be set to True if NN==True
-ENTIRE_CORPUS= True
+# NOTE: This file only contains the hyperparameters at the most abstract level,
+# those that are most likely to be tuned by the user. See relevant functions
+# in Utils.py for finer tuning of parameters.
+# NOTE: If you wish to keep the following values as defaults, but try out other
+# values, you can override the defaults by assinging variables in lda_config.py
 
 ### determine hyperparameters ###
+
+### Model choice hyperparameters
+
+NN = False # For development purposes. Should always be set to False for LDA
+ENTIRE_CORPUS = True # Are we using a random subset of comments, or the whole
+# dataset? The names of output files will include the value of this variable
+OVERWRITE = False # Overwrites existing sampled comment indices. Only matters
+# if ENTIRE_CORPUS = False
 
 ### Pre-processing hyperparameters
 MaxVocab = 2000000 # maximum size of the vocabulary
@@ -24,21 +27,16 @@ no_above = 0.99 # tokens that appear in more than this fraction of documents in
 training_fraction = 0.99 # what percentage of data will be used for training.
 # The rest of the dataset will be used as an evaluation set for calculating
 # perplexity
+calculate_perc_rel = False # whether the percentage of relevant comments from
+# each year should be calculated and written to file
 
 ### LDA hyperparameters
+n_random_comments = 1500 # number of comments to sample from each year for
+# training. Only matters if ENTIRE_CORPUS = False.
 iterations = 1000 # number of times LDA posterior distributions will be sampled
 num_threads = 5 # number of threads used for parallelized processing of comments
 # Only matters if using _Threaded functions
-num_topics = 50 # number of topics to be generated in each LDA sampling
-sample_topics = 0.1 # percentage of topics that will be selected for reporting
-# based on average yearly contribution
-topn = 80 # the number of high-probability words for each topic to be exported
-# NOTE: Many of the words will inevitably be high probability general
-# non-content and non-framing words. So topn should be set to significantly
-# higher than the number of relevant words you wish to see
-sample_comments = 100 # number of comments that will be sampled from top topics
-min_comm_length = 50 # the minimum acceptable number of words in a sampled
-# comment. Set to None for no length filtering
+num_topics = 75 # number of topics to be generated in each LDA sampling
 alpha = 0.1 # determines how many high probability topics will be assigned to a
 # document in general (not to be confused with NN l2regularization constant)
 minimum_probability = 0.01 # minimum acceptable probability for an output topic
@@ -47,8 +45,19 @@ eta = 0.1 # determines how many high probability words will be assigned to a
 # topic in general
 minimum_phi_value = 0.01 # determines the lower bound on per-term topic
 # probability. Only matters if per_word_topics = True.
-n_random_comments = 1500 # number of comments to sample from each year for
-# training
+calculate_perplexity = True # whether perplexity should be calculated for the
+# LDA model
+
+### Sampling hyperparameters
+sample_topics = 0.1 # percentage of topics that will be selected for reporting
+# based on average yearly contribution
+topn = 80 # the number of high-probability words for each topic to be exported
+# NOTE: Many of the words will inevitably be high probability general
+# non-content and non-framing words. So topn should be set to significantly
+# higher than the number of relevant words you wish to see
+sample_comments = 100 # number of comments that will be sampled from top topics
+min_comm_length = 40 # the minimum acceptable number of words in a sampled
+# comment. Set to None for no length filtering
 
 ### Paths
 
