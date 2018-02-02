@@ -785,7 +785,7 @@ def Create_New_Sets(regression,path,output_path,training_fraction,indices,NN,all
                 for idx,row in enumerate(reader):
                     row = row[0].split(",")
                     # ignore headers and record the index of comments that are interpretable and that have ratings for all three goal variables
-                    if idx != 0 and (row[7] == 'Y' or row[7] == 'y') and is_number(row[4]) and is_number(row[5]) and is_number(row[6]):
+                    if idx != 0 and (row[7] != 'N' or row[7] != 'n') and is_number(row[4]) and is_number(row[5]) and is_number(row[6]):
                         human_ratings.append(int(row[1]))
 
             num_comm = len(human_ratings) # the number of valid samples for network training
