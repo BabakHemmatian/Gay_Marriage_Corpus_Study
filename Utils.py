@@ -799,7 +799,7 @@ def Create_New_Sets(regression,path,output_path,training_fraction,indices,NN,all
                 for idx,row in enumerate(reader):
                     row = row[0].split(",")
                     # ignore headers and record the index of comments that are interpretable and that have ratings for all three goal variables
-                    if idx != 0 and (row[7] == 'Y' or row[7] == 'y') and is_number(row[4]) and is_number(row[5]) and is_number(row[6]):
+                    if idx != 0 and (row[7] != 'N' or row[7] != 'n') and is_number(row[4]) and is_number(row[5]) and is_number(row[6]):
                         human_ratings.append(int(row[1]))
 
             num_comm = len(human_ratings) # the number of valid samples for network training
@@ -2002,7 +2002,7 @@ def Top_Topics_Theta_Multicore(indexed_dataset,report,dictionary,ldamodel,min_co
 
         else: # if filtering based on comment length
 
-            if len(document[1]) > min_comm_length: # filter out short comments
+            if len(document[1].strip().split()) > min_comm_length: # filter out short comments
 
                 # add a tuple including comment index, bag of words representation and relevant year to the dataset
                 dataset.append((document[0],dictionary.doc2bow(document[1].strip().split()),document[2]))
