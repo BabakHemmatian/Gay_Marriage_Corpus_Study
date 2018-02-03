@@ -599,7 +599,12 @@ def Yearly_Counts(path=path):
 
     return relevant_year,cumm_rel_year
 
-### Helper function for select_random_comments
+### Helper functions for select_random_comments
+
+def get_comment_lengths(path=path):
+    fin=path+'/lda_prep'
+    with open(fin, 'r') as fh:
+        return [ len(line.split()) for line in fh.read().split("\n") ]
 
 def _select_n(n, iterable):
     if len(iterable)<n:
@@ -654,11 +659,17 @@ def select_random_comments(path=path, n=n_random_comments,
     # Record the number of indices sampled per year
     nixs=defaultdict(int)
 
+    # Get a list of comment lengths, so we can filter by it
+    lens=get_comment_lengths(path)
+
     with open(fout, 'w') as wfh:
         if len(early_years)>0:
             fyear, lyear=early_years[0], early_years[-1]
             start=ct_cumyear[ct_lu[fyear-1]] if fyear-1 in ct_lu else 0
-            ixs=sorted(_select_n(n, range(start, ct_cumyear[ct_lu[lyear]])))
+            end=ct_cumyear[ct_lu[lyear]]
+            ixs_longenough=[ ix for ix in range(start, end) if lens[ix] >=
+                             min_comm_length ]
+            ixs=sorted(_select_n(n, ixs_longenough))
             for ix in ixs:
                 nixs[years[[ ct>ix for ct in ct_cumyear ].index(True)]]+=1
             assert sum(nixs.values())==len(ixs)
@@ -666,7 +677,10 @@ def select_random_comments(path=path, n=n_random_comments,
             wfh.write('\n')
         for year in later_years:
             start=ct_cumyear[ct_lu[year-1]]
-            ixs=sorted(_select_n(n, range(start, ct_cumyear[ct_lu[year]])))
+            end=ct_cumyear[ct_lu[year]]
+            ixs_longenough=[ ix for ix in range(start, end) if lens[ix] >= 
+                             min_comm_length ]
+            ixs=sorted(_select_n(n, ixs_longenough))
             nixs[year]=len(ixs)
             wfh.write('\n'.join(map(str, ixs)))
             wfh.write('\n')
