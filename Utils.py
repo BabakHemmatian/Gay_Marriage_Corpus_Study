@@ -33,6 +33,8 @@ from contextlib import contextmanager
 from threading import Thread, Lock
 import hashlib
 import tzlocal
+import subprocess
+import pickle
 nltk.download('punkt')
 nltk.download('wordnet')
 from config import *
@@ -99,15 +101,15 @@ def Get_Hashsums(path):
     # notify the user
     print ('Retrieving hashsums to check file integrity')
     # set the URL to download hashsums from
-    url='https://files.pushshift.io/reddit/comments/sha256sums'
+    url='https://files.pushshift.io/reddit/comments/sha256sum.txt'
     # remove any old hashsum file
-    if Path(path+'/sha256sums').is_file():
-        os.remove(path+'/sha256sums')
+    if Path(path+'/sha256sum.txt').is_file():
+        os.remove(path+'/sha256sum.txt')
     # download hashsums
     os.system('cd {} && wget {}'.format(path, url))
     # retrieve the correct hashsums
     hashsums = {}
-    with open(path+'/sha256sums','rb') as f:
+    with open(path+'/sha256sum.txt','rb') as f:
         for line in f:
             if line.strip() != "":
                 (val, key) = str(line).split()
@@ -117,9 +119,9 @@ def Get_Hashsums(path):
 
 ## calculate hashsums for downloaded files in chunks of size 4096B
 
-def sha256(fname):
+def sha256(fname, path=path):
     hash_sha256= hashlib.sha256()
-    with open(fname, "rb") as f:
+    with open("{}/{}".format(path, fname), "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_sha256.update(chunk)
     return hash_sha256.hexdigest()
@@ -212,223 +214,224 @@ def getFilterEquRegex():
 
 MAREQU = getFilterEquRegex()
 
-### define the parser
+def get_parser_fns(year=None, month=None, path=path):
+    assert ( ( isinstance(year, type(None)) and isinstance(month, type(None)) ) or
+             ( not isinstance(year, type(None)) and not isinstance(month, type(None)) ) )
+    if isinstance(year, type(None)) and isinstance(month, type(None)):
+        suffix=""
+    else:
+        suffix="-{}-{}".format(year, month)
+    fns=dict((("lda_prep","{}/lda_prep{}".format(path, suffix)),
+              ("original_comm","{}/original_comm{}".format(path, suffix)),
+              ("original_indices","{}/original_indices{}".format(path, suffix)),
+              ("votes","{}/votes{}".format(path, suffix)),
+              ("counts","{}/RC_Count_List{}".format(path, suffix)),
+              ("timedict","{}/RC_Count_Dict{}".format(path, suffix))
+             ))
+    if NN:
+        fns["nn_prep"]="{}/nn_prep{}".format(path, suffix)
+    return fns
+ 
+def parse_one_month_wrapper(args):
+    parse_one_month(*args)
 
-# NOTE: Parses for LDA if NN = False
-# NOTE: Saves the text of the non-processed comment to file as well if write_original = True
-
-### define the parser
-
-# NOTE: Parses for LDA if NN = False
-# NOTE: Saves the text of the non-processed comment to file as well if write_original = True
-
-def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
-           clean_raw=False):
+def parse_one_month(year, month, hashsums, path=path, stop=stop,
+                    vote_counting=vote_counting, NN=NN,
+                    write_original=WRITE_ORIGINAL, download_raw=DOWNLOAD_RAW,
+                    clean_raw=CLEAN_RAW):
+    timedict=dict()
 
     if NN == True: # if parsing for a neural network
-
         ## import the pre-trained PUNKT tokenizer for determining sentence boundaries
         sent_detector = nltk.data.load('tokenizers/punkt/english.pickle')
 
-    # json parser
-    decoder = json.JSONDecoder(encoding='utf-8')
-
-    ## iterate over files in directory to preprocess the text and record the votes
-
-    # get the correct hashsums to check file integrity
-    hashsums = Get_Hashsums(path)
-
-    # initialize container for number of comments and indices related to each month
-    timedict = dict()
-
-    # initialize a counter for indices of relevant comments in the original files
-    main_counter = 0
-
-    processed_counter = 0 # counting the number of all processed comments
-
-    for year, month in dates: # for each month
-
-        ## prepare files
-
-        filename=_get_rc_filename(year, month) # get the relevant compressed data file name
-
-        if not filename in os.listdir(path) and download_raw: # if the file is not available on disk and download is turned on
-            download(year, month, path) # download the relevant file
-
-        elif not filename in os.listdir(path): # if the file is not available, but download is turned off
-            print ('Can\'t find data for {}/{}. Skipping.'.format(month, year)) # notify the user
-            continue
-
+    decoder = json.JSONDecoder(encoding='utf-8') 
+ 
+    ## prepare files
+    filename=_get_rc_filename(year, month) # get the relevant compressed data file name
+    if not filename in os.listdir(path) and download_raw: # if the file is not available on disk and download is turned on
+        download(year, month, path) # download the relevant file
         # check data file integrity and download again if needed
-
         filesum = sha256(filename) # calculate hashsum for the data file on disk
-
-        # if filesum != hashsums[filename]:
-        #     print("Warning! Hashsum check failed for "+filename)
-        # else:
-        #     print("Hashsum check passed for "+filename)
         attempt = 0 # number of hashsum check trials for the current file
         while filesum != hashsums[filename]: # if the file hashsum does not match the correct hashsum
-
             attempt += 1 # update hashsum check counter
             if attempt == 5: # if failed hashsum check three times, ignore the error to prevent an infinite loop
                 print("Failed to pass hashsum check 5 times. Ignoring the error.")
                 break
-
             # notify the user
             print("Corrupt data file detected")
             print("Expected hashsum value: "+hashsums[filename]+"\nBut calculated: "+filesum)
             os.remove(path+'/'+filename) # remove the corrupted file
             download(year,month,path) # download it again
 
-        # open the file as a text file, in utf8 encoding
-        fin = bz2.BZ2File(path+'/'+filename,'r')
+    elif not filename in os.listdir(path): # if the file is not available, but download is turned off
+        print ('Can\'t find data for {}/{}. Skipping.'.format(month, year)) # notify the user
+        return
 
-        # create a file to write the processed text to
-        if NN == True: # if doing NN
-            fout = open(path+"/nn_prep",'a+')
-        else: # if doing LDA
-            fout = open(path+"/lda_prep",'a+')
+    # open the file as a text file, in utf8 encoding
+    fin = bz2.BZ2File(path+'/'+filename,'r')
 
-        # create a file if we want to write the original comments and their indices to disk
-        if write_original == True:
-            foriginal = open(path+"/original_comm",'a+')
-            main_indices = open(path+'/original_indices','a+')
+    # Get names of processing files
+    fns=get_parser_fns(year, month, path)
 
-        # if we want to record sign of the votes
-        if vote_counting == True:
-            # create a file for storing whether a relevant comment has been upvoted or downvoted more often or neither
-            vote = open(path+"/votes",'a+')
+    # create a file to write the processed text to
+    if NN == True: # if doing NN
+        fout = open(fns["nn_prep"],'w')
+    else: # if doing LDA
+        fout = open(fns["lda_prep"],'w')
 
-        # create a file to store the relevant cummulative indices for each month
-        ccount = open(path+"/RC_Count_List",'a+')
+    # create a file if we want to write the original comments and their indices to disk
+    if write_original == True:
+        foriginal = open(fns["original_comm"],'w')
+        main_indices = open(fns["original_indices"],'w')
 
-        ## read data
+    # if we want to record sign of the votes
+    if vote_counting == True:
+        # create a file for storing whether a relevant comment has been upvoted or downvoted more often or neither
+        vote = open(fns["votes"], 'w')
 
-        for line in fin: # for each comment
+    # create a file to store the relevant cummulative indices for each month
+    ccount = open(fns["counts"], 'w')
 
-            main_counter += 1 # update the general counter
+    main_counter=0
+    processed_counter=0
+    ## read data
+    for line in fin: # for each comment
+        main_counter += 1 # update the general counter
 
-            # parse the json, and turn it into regular text
-            comment = decoder.decode(line)
-            original_body = HTMLParser.HTMLParser().unescape(comment["body"])
+        # parse the json, and turn it into regular text
+        comment = decoder.decode(line)
+        original_body = HTMLParser.HTMLParser().unescape(comment["body"])
 
-            # filter comments by relevance to the topic
-            if len(GAYMAR.findall(original_body)) > 0 or len(MAREQU.findall(original_body)) > 0:
+        # filter comments by relevance to the topic
+        if len(GAYMAR.findall(original_body)) > 0 or len(MAREQU.findall(original_body)) > 0:
+            ## preprocess the comments
+            if NN == True:
+                body = sent_detector.tokenize(original_body) # tokenize the sentences
+                body = NN_clean(body,stop) # clean the text for NN
+                if len(body) > 0: # if the comment body is not empty after preprocessing
+                    processed_counter += 1 # update the counter
+                    # if we want to write the original comment to disk
+                    if write_original == True:
+                        original_body = original_body.replace("\n","") # remove mid-comment lines
+                        original_body = original_body.encode("utf-8") # set encoding
+                        print(" ".join(original_body.split()),file=foriginal) # record the original comment
+                        print(main_counter,file=main_indices) # record the main index
 
-                ## preprocess the comments
-
-                if NN == True:
-
-                    body = sent_detector.tokenize(original_body) # tokenize the sentences
-                    body = NN_clean(body,stop) # clean the text for NN
-
-                else:
-
-                    body = LDA_clean(original_body,stop) # clean the text for LDA
-
-                if NN == True: # for NN
-
-                    if len(body) > 0: # if the comment body is not empty after preprocessing
-                        processed_counter += 1 # update the counter
-
-                        # if we want to write the original comment to disk
-                        if write_original == True:
-                            original_body = original_body.replace("\n","") # remove mid-comment lines
-                            original_body = original_body.encode("utf-8") # set encoding
-                            print(" ".join(original_body.split()),file=foriginal) # record the original comment
-                            print(main_counter,file=main_indices) # record the main index
-
-                        # if we are interested in the sign of the votes
-                        if vote_counting == True:
-                            # write the votes to file
-                            print(int(comment["score"]),end="\n",file=vote)
-
-                        # update monthly comment counts
-                        created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
-                        if created_at not in timedict:
-                            timedict[created_at] = 1
-                        else:
-                            timedict[created_at] += 1
-
-                        for sen in body: # for each sentence in the comment
-
-                            # remove mid-comment lines and set encoding
-                            sen = sen.replace("\n","")
-                            sen = sen.encode("utf-8")
-
-                            # print the processed sentence to file
-                            print(" ".join(sen.split()), end=" ", file=fout)
-
-                        # ensure that each comment is on a separate line
-                        print("\n",end="",file=fout)
-
-                else: # if doing LDA
-
-                    if body.strip() != "": # if the comment is not empty after preprocessing
-                        processed_counter += 1 # update the counter
-
-                        # if we want to write the original comment to disk
-                        if write_original == True:
-                            original_body = original_body.replace("\n","") # remove mid-comment lines
-                            original_body = original_body.encode("utf-8") # set encoding
-                            print(" ".join(original_body.split()),file=foriginal) # record the original comment
-                            print(main_counter,file=main_indices) # record the index in the original files
-
-                        # if we are interested in the sign of the votes
-                        if vote_counting == True:
-                            # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
-                            print(int(comment["score"]),end="\n",file=vote)
-
-                        # record the number of documents by year and month
-                        created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
-                        if created_at not in timedict:
-                            timedict[created_at] = 1
-                        else:
-                            timedict[created_at] += 1
-
+                    for sen in body: # for each sentence in the comment
                         # remove mid-comment lines and set encoding
-                        body = body.replace("\n","")
-                        body = body.encode("utf-8")
+                        sen = sen.replace("\n","")
+                        sen = sen.encode("utf-8")
 
-                        # print the comment to file
-                        print(" ".join(body.split()), sep=" ",end="\n", file=fout)
+                        # print the processed sentence to file
+                        print(" ".join(sen.split()), end=" ", file=fout)
 
-        # write the monthly cummulative number of comments to file
-        print(processed_counter,file=ccount)
+                    # ensure that each comment is on a separate line
+                    print("\n",end="",file=fout)
 
-        # close the files to save the data
-        fin.close()
-        fout.close()
-        if NN == True:
-            vote.close()
-        if write_original == True:
-            foriginal.close()
-            main_indices.close()
-        ccount.close()
+            else: # if doing LDA
+                body = LDA_clean(original_body,stop) # clean the text for LDA
+                if body.strip() != "": # if the comment is not empty after preprocessing
+                    processed_counter += 1 # update the counter
 
-        # timer
-        print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
+                    # if we want to write the original comment to disk
+                    if write_original == True:
+                        original_body = original_body.replace("\n","") # remove mid-comment lines
+                        original_body = original_body.encode("utf-8") # set encoding
+                        print(" ".join(original_body.split()),file=foriginal) # record the original comment
+                        print(main_counter,file=main_indices) # record the index in the original files
 
-        if clean_raw: # if the user wishes compressed data files to be removed after processing
-            os.system('cd {} && rm {}'.format(path, filename)) # delete the recently processed file
+                    # remove mid-comment lines and set encoding
+                    body = body.replace("\n","")
+                    body = body.encode("utf-8")
+
+                    # print the comment to file
+                    print(" ".join(body.split()), sep=" ",end="\n", file=fout)
+
+            # if we are interested in the sign of the votes
+            if vote_counting == True:
+                # write the sign of the vote to file (-1 if negative, 0 if neutral, 1 if positive)
+                print(int(comment["score"]),end="\n",file=vote)
+ 
+            # record the number of documents by year and month
+            created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
+            timedict[created_at]=timedict.get(created_at, 0)
+            timedict[created_at]+=1
+
+    # write the monthly cummulative number of comments to file
+    print(processed_counter,file=ccount)
+
+    # close the files to save the data
+    fin.close()
+    fout.close()
+    if NN == True:
+        vote.close()
+    if write_original == True:
+        foriginal.close()
+        main_indices.close()
+    ccount.close()
+    with open(fns["timedict"], "wb") as wfh:
+        pickle.dump(timedict, wfh) 
+
+    # timer
+    print("Finished parsing "+filename+" at " + time.strftime('%l:%M%p'))
+
+    if clean_raw: # if the user wishes compressed data files to be removed after processing
+        print ("Cleaning up {}/{}.".format(path, filename))
+        os.system('cd {} && rm {}'.format(path, filename)) # delete the recently processed file
+
+    return
+
+### define the parser
+
+# NOTE: Parses for LDA if NN = False
+# NOTE: Saves the text of the non-processed comment to file as well if write_original = True
+
+### define the parser
+
+# NOTE: Parses for LDA if NN = False
+# NOTE: Saves the text of the non-processed comment to file as well if write_original = True
+
+def pool_parsing_data(path=path, NN=NN):
+    fns=get_parser_fns(path=path)
+    # Initialize an "overall" timedict
+    timedict=defaultdict(lambda:0)
+    for kind in fns.keys():
+        fns_=[ get_parser_fns(year, month, path)[kind] for year, month in dates
+             ]
+        if kind=="timedict":
+            # Update overall timedict with data from each year
+            for fn_ in fns_:
+                with open(fn_, "rb") as rfh:
+                    minitimedict=pickle.load(rfh)
+                    for mo, val in minitimedict.items():
+                        timedict[mo]+=val    
+            with open(fns["timedict"], "w") as wfh:
+                for month,docs in sorted(timedict.iteritems()):
+                    print(month+" "+str(docs), end='\n', file=wfh)
+            continue
+        subprocess.call("cat "+" ".join(fns_)+"> "+fns[kind], shell=True)
+
+def Parser(dates=dates, path=path, stop=stop, vote_counting=vote_counting,
+           NN=NN, write_original=WRITE_ORIGINAL, download_raw=DOWNLOAD_RAW,
+           clean_raw=CLEAN_RAW):
+
+    # get the correct hashsums to check file integrity
+    hashsums = Get_Hashsums(path)
+   
+    # Parallelize parsing by month 
+    pool = multiprocessing.Pool(processes=CpuInfo())
+    inputs=[ (year, month, hashsums, path, stop, vote_counting, NN,
+              write_original, download_raw, clean_raw) for year, month in dates
+           ]
+    pool.map(parse_one_month_wrapper, inputs)
 
     # timer
     print("Finished parsing at " + time.strftime('%l:%M%p'))
 
-    ## distribution of comments by month
-
-    # Write the distribution to file
-
-    if Path(path+"/RC_Count_Dict").is_file():
-        os.remove(path+"/RC_Count_Dict")
-
-    fcount = open(path+"/RC_Count_Dict",'a+')
-
-    for month,docs in sorted(timedict.iteritems()):
-        print(month+" "+str(docs),end='\n',file=fcount)
-
-    fcount.close
+    # Pool parsing data from all files
+    pool_parsing_data(path, NN)
 
 ### Function to call parser when needed and parse comments
 
@@ -447,8 +450,9 @@ def Parser(dates,path,stop,vote_counting,NN,write_original,download_raw=True,
 # TODO: Replace mentions of Vote in this file with mentions of sample_ratings
 
 def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
-                          vote_counting=True, write_original=True,
-                          download_raw=True, clean_raw=False):
+                          vote_counting=vote_counting,
+                          write_original=WRITE_ORIGINAL,
+                          download_raw=DOWNLOAD_RAW, clean_raw=CLEAN_RAW):
 
     # check input arguments for valid type
     assert type(vote_counting) is bool
@@ -481,12 +485,6 @@ def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
                 os.remove(path+"/RC_Count_List")
             if Path(path+"/RC_Count_Dict").is_file():
                 os.remove(path+"/RC_Count_Dict")
-
-            # check for the presence of data files
-            if not glob.glob(path+'/*.bz2'):
-                raise Exception('No data file found')
-
-            # parse again
 
             # timer
             print("Started parsing at " + time.strftime('%l:%M%p'))
@@ -525,12 +523,6 @@ def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
                 # if Path(path+"/RC_Count_Dict").is_file():
                 #     os.remove(path+"/RC_Count_Dict")
 
-                # check for the presence of data files
-                if not glob.glob(path+'/*.bz2'):
-                    raise Exception('No data file found')
-
-                # parse again
-
                 # timer
                 print("Started parsing at " + time.strftime('%l:%M%p'))
                 Parser(dates,path,stop,vote_counting,NN,write_original, download_raw,
@@ -544,10 +536,6 @@ def Parse_Rel_RC_Comments(dates=dates, path=path, stop=stop, NN=NN,
                 os.remove(path+"/votes")
         # if Path(path+"/RC_Count_Dict").is_file():
         #     os.remove(path+"/RC_Count_Dict")
-
-        # check for the presence of data files
-        if not glob.glob(path+'/*.bz2'):
-            raise Exception('No data file found')
 
         # timer
         print("Started parsing at " + time.strftime('%l:%M%p'))
@@ -704,14 +692,6 @@ def Rel_Counter(path):
     if not Path(path+"/RC_Count_Total").is_file():
         raise Exception('Total monthly comment counts could not be found')
 
-    # # load relevant monthly counts
-    # with open(path+"/RC_Count_Dict",'r') as f:
-    #     timedict = dict()
-    #     for line in f:
-    #         if line.strip() != "":
-    #             (key, val) = line.split()
-    #             timedict[key] = int(val)
-
     # load the total monthly counts into a dictionary
     d = {}
     with open(path+"/RC_Count_Total",'r') as f:
@@ -729,13 +709,6 @@ def Rel_Counter(path):
         else:
             total_year[str(keys[3:7])] = d[keys]
 
-    # # calculate the relevant yearly counts
-    # relevant_year = {}
-    # for key in timedict:
-    #     if str(key[:4]) in relevant_year:
-    #         relevant_year[str(key[:4])] += timedict[key]
-    #     else:
-    #         relevant_year[str(key[:4])] = timedict[key]
     relevant_year, _ = Yearly_Counts(path)
     relevant = {}
     for idx,year in enumerate(relevant_year):

@@ -17,6 +17,11 @@ ENTIRE_CORPUS = True # Are we using a random subset of comments, or the whole
 # dataset? The names of output files will include the value of this variable
 OVERWRITE = False # Overwrites existing sampled comment indices. Only matters
 # if ENTIRE_CORPUS = False
+DOWNLOAD_RAW = True # If a raw data file is not available on disk, download it
+# if DOWNLOAD_RAW set to True
+CLEAN_RAW = True # After parsing, delete the raw data file from disk
+vote_counting = False # Count number of upvotes when parsing
+WRITE_ORIGINAL = True # Write original comments to file when parsing
 
 ### Pre-processing hyperparameters
 MaxVocab = 2000000 # maximum size of the vocabulary
