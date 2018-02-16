@@ -5,7 +5,8 @@
 
 from __future__ import print_function
 from config import *
-from Utils import *
+from Parser import Parser
+from Utils_ import *
 
 ### set default file encoding
 reload(sys)
@@ -27,7 +28,8 @@ Write_Performance()
 # NOTE: If clean_raw = True, the compressed data files will be removed from disk after processing
 # NOTE: Relevance filters can be changed from Utils.py. Do not forget to change the Parser function accordingly
 
-Parse_Rel_RC_Comments(vote_counting=True,download_raw=False)
+parser=Parser()
+parser.Parse_Rel_RC_Comments()
 
 ## call the function for calculating the percentage of relevant comments
 

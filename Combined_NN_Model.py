@@ -4,7 +4,8 @@
 ### import the required modules and functions
 
 from __future__ import print_function
-from Utils import *
+from Parser import Parser
+from Utils_ import *
 
 ### set default file encoding
 
@@ -88,7 +89,8 @@ stop = set(nltk.corpus.stopwords.words('english'))
 
 ## NOTE: If NN = False, will pre-process data for LDA
 
-Parse_Rel_RC_Comments(path,stop,vote_counting=True,NN=True,write_original=False)
+parser=Parser()
+parser.Parse_Rel_RC_Comments()
 
 ### call the function for calculating the percentage of relevant comments
 
