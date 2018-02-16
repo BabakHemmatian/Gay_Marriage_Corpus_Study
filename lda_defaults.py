@@ -1,5 +1,6 @@
 import nltk
 import os
+import re
 import sys
 
 # NOTE: This file only contains the hyperparameters at the most abstract level,
@@ -98,3 +99,5 @@ stop = []
 for word in set(nltk.corpus.stopwords.words('english')):
     if word not in keepers:
         stop.append(str(word))
+
+regex=re.compile("(^(?=.*gay|.*homosexual|.*homophile|.*fag|.*faggot|.*fagot|.*queer|.*homo|.*fairy|.*nance|.*pansy|.*queen|.*LGBT|.*GLBT|.*same.sex|.*lesbian|.*dike|.*dyke|.*butch|.*sodom|.*bisexual)(?=.*marry|.*marri|.*civil union).*$)|(^(?=.*marriage equality|.*equal marriage).*$)", re.I)
