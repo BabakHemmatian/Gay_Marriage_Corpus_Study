@@ -6,6 +6,7 @@
 from __future__ import print_function
 from config import *
 from Parser import Parser
+from Utils import *
 from Utils_ import *
 
 ### set default file encoding
