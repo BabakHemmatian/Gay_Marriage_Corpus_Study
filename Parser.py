@@ -316,7 +316,7 @@ class Parser(object):
         # close the files to save the data
         fin.close()
         fout.close()
-        if self.NN:
+        if self.vote_counting:
             vote.close()
         if self.write_original:
             foriginal.close()
