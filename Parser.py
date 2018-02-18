@@ -72,9 +72,18 @@ class Parser(object):
         return 'RC_{}-{}.bz2'.format(yr, mo)
 
     ## Download Reddit comment data
-    def download(self, year, month):
+    def download(self, year=None, month=None, filename=None):
+        assert not all([ isinstance(year, type(None)),
+                         isinstance(month, type(None)),
+                         isinstance(filename, type(None))
+                       ])
+        assert isinstance(filename, type(None)) or (isinstance(year, type(None))
+               and isinstance(month, type(None)))
         BASE_URL='https://files.pushshift.io/reddit/comments/'
-        url=BASE_URL+self._get_rc_filename(year, month)
+        if not isinstance(filename, type(None)):
+            url=BASE_URL+filename
+        else:
+            url=BASE_URL+self._get_rc_filename(year, month)
         print ('Sending request to {}.'.format(url))
         os.system('cd {} && wget {}'.format(self.path, url))
 
@@ -441,7 +450,8 @@ class Parser(object):
         if not Path(self.path+"/RC_Count_List").is_file():
             raise Exception('Cumulative monthly comment counts could not be found')
         if not Path(self.path+"/RC_Count_Total").is_file():
-            raise Exception('Total monthly comment counts could not be found')
+            self.download(filename="monthlyCount.txt")
+            os.rename(self.path+"/monthlyCount.txt", self.path+"/RC_Count_Total")
 
         # load the total monthly counts into a dictionary
         d = {}
