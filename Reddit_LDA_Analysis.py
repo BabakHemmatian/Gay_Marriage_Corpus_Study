@@ -33,9 +33,8 @@ parser=Parser()
 parser.Parse_Rel_RC_Comments()
 
 ## call the function for calculating the percentage of relevant comments
-
 if calculate_perc_rel:
-    Perc_Rel_RC_Comment(path)
+    Parser.Perc_Rel_RC_Comment()
 
 ### create training and evaluation sets
 

@@ -38,6 +38,7 @@ import pickle
 nltk.download('punkt')
 nltk.download('wordnet')
 from config import *
+from Utils import *
 
 ### Global Set keys
 
@@ -52,51 +53,7 @@ Max     = {key: [] for key in set_key_list}
 vote     = {key: [] for key in set_key_list} # for NN
 V = OrderedDict({}) # vocabulary
 
-### calculate the yearly relevant comment counts
-
-def Yearly_Counts(path=path):
-
-    # check for monthly relevant comment counts
-    if not Path(path+'/RC_Count_List').is_file():
-        raise Exception('The cummulative monthly counts could not be found')
-
-    # load monthly relevant comment counts
-    with open(path+"/RC_Count_List",'r') as f:
-        timelist = []
-        for line in f:
-            if line.strip() != "":
-                timelist.append(int(line))
-
-    # calculate the cummulative yearly counts
-
-    # intialize lists and counters
-    cumm_rel_year = [] # cummulative number of comments per year
-    relevant_year = [] # number of comments per year
-
-    month_counter = 0
-
-    # iterate through monthly counts
-    for index,number in enumerate(timelist): # for each month
-        month_counter += 1 # update counter
-
-        if month_counter == 12 or index == len(timelist) - 1: # if at the end of the year or the corpus
-
-            cumm_rel_year.append(number) # add the cummulative count
-
-            if index + 1 == 12: # for the first year
-
-                relevant_year.append(number) # append the cummulative value to number of comments per year
-
-            else: # for the other years, subtract the last two cummulative values to find the number of relevant comments in that year
-
-                relevant_year.append(number - cumm_rel_year[-2])
-
-            month_counter = 0 # reset the counter at the end of the year
-
-    assert sum(relevant_year) == cumm_rel_year[-1]
-    assert cumm_rel_year[-1] == timelist[-1]
-
-    return relevant_year,cumm_rel_year
+#### Writes the indices of n comments from each year in years to file.
 
 ### Helper functions for select_random_comments
 
@@ -109,8 +66,6 @@ def _select_n(n, iterable):
     if len(iterable)<n:
         return iterable
     return np.random.choice(iterable, size=n, replace=False)
-
-#### Writes the indices of n comments from each year in years to file.
 
 # Parameters:
 #   path: Path to working directory.
@@ -187,73 +142,6 @@ def select_random_comments(path=path, n=n_random_comments,
     with open(fcounts, 'w') as wfh:
         wfh.write('\n'.join('{} {}'.format(k, v) for k, v in
                   sorted(nixs.iteritems(), key=lambda kv: kv[0])))
-
-### determine what percentage of the posts in each year was relevant based on content filters
-
-# NOTE: Requires total comment counts (RC_Count_Total) from http://files.pushshift.io/reddit/comments/
-# NOTE: Requires monthly relevant counts from parser or disk
-
-def Rel_Counter(path):
-
-    # check paths
-    # if not Path(path+"/RC_Count_Dict").is_file():
-    #     raise Exception('Monthly counts cannot be found')
-    if not Path(path+"/RC_Count_List").is_file():
-        raise Exception('Cumulative monthly comment counts could not be found')
-    if not Path(path+"/RC_Count_Total").is_file():
-        raise Exception('Total monthly comment counts could not be found')
-
-    # load the total monthly counts into a dictionary
-    d = {}
-    with open(path+"/RC_Count_Total",'r') as f:
-        for line in f:
-            line = line.replace("\n","")
-            if line.strip() != "":
-                (key, val) = line.split("  ")
-                d[key] = int(val)
-
-    # calculate the total yearly counts
-    total_year = {}
-    for keys in d:
-        if str(keys[3:7]) in total_year:
-            total_year[str(keys[3:7])] += d[keys]
-        else:
-            total_year[str(keys[3:7])] = d[keys]
-
-    relevant_year, _ = Yearly_Counts(path)
-    relevant = {}
-    for idx,year in enumerate(relevant_year):
-        relevant[str(2006+idx)] = year
-
-    # calculate the percentage of comments in each year that was relevant and write it to file
-    perc_rel = {}
-    rel = open(path+"/perc_rel",'a+')
-    for key in relevant:
-        perc_rel[key] = float(relevant[key]) / float(total_year[key])
-    print(sorted(perc_rel.items()),file=rel)
-    rel.close
-
-### Load, calculate or re-calculate the percentage of relevant comments/year
-
-def Perc_Rel_RC_Comment(path):
-
-    if Path(path+"/perc_rel").is_file(): # look for extant record
-
-        # if it exists, ask if it should be overwritten
-        Q = raw_input("Yearly relevant percentages are already available. Do you wish to delete them and count again [Y/N]?")
-
-        if Q == 'Y' or Q == 'y': # if yes
-
-            os.remove(path+"/perc_rel") # delete previous record
-            Rel_Counter(path) # calculate again
-
-        else: # if no
-
-            print("Operation aborted") # pass
-
-    else: # if there is not previous record
-
-        Rel_Counter(path) # calculate
 
 ### function to determine comment indices for new training, development and test sets
 

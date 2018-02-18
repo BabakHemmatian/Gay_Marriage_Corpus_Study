@@ -184,7 +184,7 @@ class Parser(object):
         if self.NN:
             fns["nn_prep"]="{}/nn_prep{}".format(self.path, suffix)
         if self.vote_counting:
-            fns["votes"]="{}/votes{}".format(self.path, suffix) 
+            fns["votes"]="{}/votes{}".format(self.path, suffix)
         return fns
 
     # NOTE: Parses for LDA if NN = False
@@ -433,3 +433,60 @@ class Parser(object):
             # timer
             print("Started parsing at " + time.strftime('%l:%M%p'))
             self.parse()
+
+    ### determine what percentage of the posts in each year was relevant based on content filters
+    # NOTE: Requires total comment counts (RC_Count_Total) from http://files.pushshift.io/reddit/comments/
+    # NOTE: Requires monthly relevant counts from parser or disk
+    def Rel_Counter(self):
+        if not Path(self.path+"/RC_Count_List").is_file():
+            raise Exception('Cumulative monthly comment counts could not be found')
+        if not Path(self.path+"/RC_Count_Total").is_file():
+            raise Exception('Total monthly comment counts could not be found')
+
+        # load the total monthly counts into a dictionary
+        d = {}
+        with open(self.path+"/RC_Count_Total",'r') as f:
+            for line in f:
+                line = line.replace("\n","")
+                if line.strip() != "":
+                    try:
+                        (key, val) = line.split("  ")
+                    except ValueError:
+                        (key, val) = line.split(" ")
+                    d[key] = int(val)
+
+        # calculate the total yearly counts
+        total_year = {}
+        for keys in d:
+            if str(keys[3:7]) in total_year:
+                total_year[str(keys[3:7])] += d[keys]
+            else:
+                total_year[str(keys[3:7])] = d[keys]
+
+        relevant_year, _ = Yearly_Counts(self.path)
+        relevant = {}
+        for idx,year in enumerate(relevant_year):
+            relevant[str(2006+idx)] = year
+
+        # calculate the percentage of comments in each year that was relevant and write it to file
+        perc_rel = {}
+        rel = open(self.path+"/perc_rel",'a+')
+        for key in relevant:
+            perc_rel[key] = float(relevant[key]) / float(total_year[key])
+        print(sorted(perc_rel.items()),file=rel)
+        rel.close
+
+    ### Load, calculate or re-calculate the percentage of relevant comments/year
+    def Perc_Rel_RC_Comment(self):
+        if Path(self.path+"/perc_rel").is_file(): # look for extant record
+            # if it exists, ask if it should be overwritten
+            Q = raw_input("Yearly relevant percentages are already available. Do you wish to delete them and count again [Y/N]?")
+
+            if Q == 'Y' or Q == 'y': # if yes
+                os.remove(path+"/perc_rel") # delete previous record
+                self.Rel_Counter() # calculate again
+            else: # if no
+                print("Operation aborted") # pass
+
+        else: # if there is not previous record
+            self.Rel_Counter() # calculate
