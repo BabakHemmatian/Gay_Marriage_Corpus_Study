@@ -39,7 +39,7 @@ if calculate_perc_rel:
 ### create training and evaluation sets
 
 if not ENTIRE_CORPUS:
-    select_random_comments()
+    Parser.select_random_comments()
 
 ## Determine the comments that will comprise each set
 
