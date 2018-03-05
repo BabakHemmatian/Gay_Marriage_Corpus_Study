@@ -63,13 +63,18 @@ class Parser(object):
         self.write_original=write_original
         self.vote_counting=vote_counting
 
-    ## Raw Reddit data filename format
-    def _get_rc_filename(self, yr, mo):
+    # Format dates to be consistent with pushshift file names
+    def format_date(self, yr, mo):
         if len(str(mo))<2:
             mo='0{}'.format(mo)
         assert len(str(yr))==4
         assert len(str(mo))==2
-        return 'RC_{}-{}.bz2'.format(yr, mo)
+        return "{}-{}".format(yr, mo)
+
+    ## Raw Reddit data filename format
+    def _get_rc_filename(self, yr, mo):
+        date=self.format_date(yr, mo)
+        return 'RC_{}.bz2'.format(date)
 
     ## Download Reddit comment data
     def download(self, year=None, month=None, filename=None):
@@ -255,7 +260,6 @@ class Parser(object):
         ccount = open(fns["counts"], 'w')
 
         main_counter=0
-        processed_counter=0
         ## read data
         for line in fin: # for each comment
             main_counter += 1 # update the general counter
@@ -271,7 +275,6 @@ class Parser(object):
                     body = sent_detector.tokenize(original_body) # tokenize the sentences
                     body = self.NN_clean(body) # clean the text for NN
                     if len(body) > 0: # if the comment body is not empty after preprocessing
-                        processed_counter += 1 # update the counter
                         # if we want to write the original comment to disk
                         if self.write_original:
                             original_body = original_body.replace("\n","") # remove mid-comment lines
@@ -293,8 +296,6 @@ class Parser(object):
                 else: # if doing LDA
                     body = self.LDA_clean(original_body) # clean the text for LDA
                     if body.strip() != "": # if the comment is not empty after preprocessing
-                        processed_counter += 1 # update the counter
-
                         # if we want to write the original comment to disk
                         if self.write_original:
                             original_body = original_body.replace("\n","") # remove mid-comment lines
@@ -318,9 +319,6 @@ class Parser(object):
                 created_at = datetime.datetime.fromtimestamp(int(comment["created_utc"])).strftime('%Y-%m')
                 timedict[created_at]=timedict.get(created_at, 0)
                 timedict[created_at]+=1
-
-        # write the monthly cummulative number of comments to file
-        print(processed_counter,file=ccount)
 
         # close the files to save the data
         fin.close()
@@ -350,6 +348,8 @@ class Parser(object):
         for kind in fns.keys():
             fns_=[ self.get_parser_fns(year, month)[kind] for year, month in
                    self.dates ]
+            if kind=="counts":
+                continue
             if kind=="timedict":
                 # Update overall timedict with data from each year
                 for fn_ in fns_:
@@ -357,9 +357,16 @@ class Parser(object):
                         minitimedict=pickle.load(rfh)
                         for mo, val in minitimedict.items():
                             timedict[mo]+=val
-                with open(fns["timedict"], "w") as wfh:
-                    for month,docs in sorted(timedict.iteritems()):
-                        print(month+" "+str(docs), end='\n', file=wfh)
+                with open(fns["timedict"], "w") as tdfh:
+                    with open(fns["counts"], "w") as cfh:
+                        cumul_docs=0
+                        for date in self.dates:
+                            month=self.format_date(*date)
+                            docs=timedict[month]
+                            print(month+" "+str(docs), end='\n', file=tdfh)
+                            # Use timedict data to populate counts file
+                            cumul_docs+=docs
+                            print(cumul_docs, end='\n', file=cfh)
                 continue
             subprocess.call("cat "+" ".join(fns_)+"> "+fns[kind], shell=True)
 
