@@ -83,7 +83,7 @@ parser=Parser()
 parser.Parse_Rel_RC_Comments()
 
 ### call the function for calculating the percentage of relevant comments
-parser.perc_Rel_RC_Comment(path)
+parser.Perc_Rel_RC_Comment()
 
 ### create training, development and test sets
 
@@ -106,7 +106,7 @@ print("Frequency filter = below " + str(FrequencyFilter),file=perf)
 
 for set_key in set_key_list:
     nnmodel.Index_Set(set_key)
-
+stop
 ## if classifying, load comment labels from file
 if classifier == True:
     vote['train'],vote['dev'],vote['test'] = Get_Votes(path)

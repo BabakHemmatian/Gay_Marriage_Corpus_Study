@@ -949,8 +949,8 @@ class LDAModel(ModelEstimator):
                 print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
 
 class NNModel(ModelEstimator):
-    def __init__(self, FrequencyFilter=FrequencyFilter):
-        ModelEstimator.__init__(self)
+    def __init__(self, FrequencyFilter=FrequencyFilter, **kwargs):
+        ModelEstimator.__init__(self, **kwargs)
         self.FrequencyFilter=FrequencyFilter
         self.set_key_list = ['train','dev','test'] # for NN
         self.sets    = {key: [] for key in self.set_key_list} # for NN
