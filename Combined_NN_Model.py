@@ -104,9 +104,9 @@ nnmodel.Define_Sets()
 print("Vocabulary size = " + str(MaxVocab),file=perf)
 print("Frequency filter = below " + str(FrequencyFilter),file=perf)
 
-for set_key in set_key_list:
+for set_key in nnmodel.set_key_list:
     nnmodel.Index_Set(set_key)
-stop
+
 ## if classifying, load comment labels from file
 if classifier == True:
     vote['train'],vote['dev'],vote['test'] = Get_Votes(path)
