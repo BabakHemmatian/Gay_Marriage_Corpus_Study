@@ -26,6 +26,7 @@ WRITE_ORIGINAL = True # Write original comments to file when parsing
 
 ### Pre-processing hyperparameters
 MaxVocab = 2000000 # maximum size of the vocabulary
+FrequencyFilter = 1 # tokens with a frequency equal or less than this number will be filtered out of the corpus
 no_below = 5 # tokens that appear in less than this number of documents in
 # corpus will be filtered out
 no_above = 0.99 # tokens that appear in more than this fraction of documents in
@@ -72,7 +73,7 @@ min_comm_length = 40 # the minimum acceptable number of words in a sampled
 # True (source: http://files.pushshift.io/reddit/comments/)
 # NOTE: if not in the same directory as this file, change the path variable
 # accordingly
-file_path = os.path.abspath(sys.argv[0])
+file_path = os.path.abspath(__file__)
 path = os.path.dirname(file_path)
 
 ## Year/month combinations to get Reddit data for
@@ -88,6 +89,8 @@ for year in years:
 ## where the output will be stored
 # NOTE: To avoid confusion between different kinds of models, record the
 # variables most important to your iteration in the folder name
+# Force this import so output_path is correctly set
+from lda_config import ENTIRE_CORPUS
 output_path = path + "/LDA_"+str(ENTIRE_CORPUS)+"_"+str(num_topics)
 
 ### Preprocessing ###

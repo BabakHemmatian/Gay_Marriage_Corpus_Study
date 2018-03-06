@@ -162,7 +162,7 @@ class Parser(object):
 
             # add sentence and end of comment padding
             if special_free.strip() != "":
-                padded = punc_free+" *STOP*"
+                padded = special_free+" *STOP*"
                 if index+1 == len(text):
                     padded = padded+" *STOP2*"
                 cleaned.append(padded)
@@ -274,41 +274,43 @@ class Parser(object):
                 if self.NN:
                     body = sent_detector.tokenize(original_body) # tokenize the sentences
                     body = self.NN_clean(body) # clean the text for NN
-                    if len(body) > 0: # if the comment body is not empty after preprocessing
-                        # if we want to write the original comment to disk
-                        if self.write_original:
-                            original_body = original_body.replace("\n","") # remove mid-comment lines
-                            original_body = original_body.encode("utf-8") # set encoding
-                            print(" ".join(original_body.split()),file=foriginal) # record the original comment
-                            print(main_counter,file=main_indices) # record the main index
+                    if len(body)==0: # if the comment body is not empty after preprocessing
+                        continue
+                    # if we want to write the original comment to disk
+                    if self.write_original:
+                        original_body = original_body.replace("\n","") # remove mid-comment lines
+                        original_body = original_body.encode("utf-8") # set encoding
+                        print(" ".join(original_body.split()),file=foriginal) # record the original comment
+                        print(main_counter,file=main_indices) # record the main index
 
-                        for sen in body: # for each sentence in the comment
-                            # remove mid-comment lines and set encoding
-                            sen = sen.replace("\n","")
-                            sen = sen.encode("utf-8")
+                    for sen in body: # for each sentence in the comment
+                        # remove mid-comment lines and set encoding
+                        sen = sen.replace("\n","")
+                        sen = sen.encode("utf-8")
 
-                            # print the processed sentence to file
-                            print(" ".join(sen.split()), end=" ", file=fout)
+                        # print the processed sentence to file
+                        print(" ".join(sen.split()), end=" ", file=fout)
 
-                        # ensure that each comment is on a separate line
-                        print("\n",end="",file=fout)
+                    # ensure that each comment is on a separate line
+                    print("\n",end="",file=fout)
 
                 else: # if doing LDA
                     body = self.LDA_clean(original_body) # clean the text for LDA
-                    if body.strip() != "": # if the comment is not empty after preprocessing
+                    if not body.strip(): # if the comment is not empty after preprocessing
                         # if we want to write the original comment to disk
-                        if self.write_original:
-                            original_body = original_body.replace("\n","") # remove mid-comment lines
-                            original_body = original_body.encode("utf-8") # set encoding
-                            print(" ".join(original_body.split()),file=foriginal) # record the original comment
-                            print(main_counter,file=main_indices) # record the index in the original files
+                        continue
+                    if self.write_original:
+                        original_body = original_body.replace("\n","") # remove mid-comment lines
+                        original_body = original_body.encode("utf-8") # set encoding
+                        print(" ".join(original_body.split()),file=foriginal) # record the original comment
+                        print(main_counter,file=main_indices) # record the index in the original files
 
-                        # remove mid-comment lines and set encoding
-                        body = body.replace("\n","")
-                        body = body.encode("utf-8")
+                    # remove mid-comment lines and set encoding
+                    body = body.replace("\n","")
+                    body = body.encode("utf-8")
 
-                        # print the comment to file
-                        print(" ".join(body.split()), sep=" ",end="\n", file=fout)
+                    # print the comment to file
+                    print(" ".join(body.split()), sep=" ",end="\n", file=fout)
 
                 # if we are interested in the sign of the votes
                 if self.vote_counting:
@@ -376,7 +378,7 @@ class Parser(object):
 
         # Parallelize parsing by month
         pool = multiprocessing.Pool(processes=CpuInfo())
-        inputs=[ (year, month, self.__dict__) for year, month in self.dates                 ]
+        inputs=[ (year, month, self.__dict__) for year, month in self.dates ]
         pool.map(parse_one_month_wrapper, inputs)
 
         # timer

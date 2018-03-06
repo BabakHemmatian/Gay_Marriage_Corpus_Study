@@ -4,8 +4,9 @@
 ### import the required modules and functions
 
 from __future__ import print_function
+from config import *
 from Parser import Parser
-from Utils_ import *
+from ModelEstimation import NNModel
 
 ### set default file encoding
 
@@ -20,15 +21,7 @@ pretrained = False # whether there is language model pre-training. Can only be s
 # NOTE: For classifier pretraining, the code should first be run with classifier = False & pretrained = False and param_path should be set according to the output_path that results from the first run of the code
 # NOTE: if pre-training is on, network hyperparameters should not be changed from the ones previously used for language modeling
 
-### determine hyperparameters ###
-
-### Pre-processing hyperparameters
-
-MaxVocab = 100000 # maximum size of the vocabulary
-FrequencyFilter = 1 # tokens with a frequency equal or less than this number will be filtered out of the corpus
-
 ### Neural Network hyperparameters
-
 epochs = 3 # number of epochs
 learning_rate = 0.003 # learning rate
 batchSz = 50 # number of parallel batches
@@ -47,9 +40,6 @@ alpha = 0.01 # L2 regularization constant
 
 # NOTE: if not available, download from http://files.pushshift.io/reddit/comments/)
 # NOTE: if not in the same directory as this file, change the path variable accordingly
-
-file_path = os.path.abspath(sys.argv[0])
-path = os.path.dirname(file_path)
 
 ## where the output will be stored
 
@@ -93,8 +83,7 @@ parser=Parser()
 parser.Parse_Rel_RC_Comments()
 
 ### call the function for calculating the percentage of relevant comments
-
-Perc_Rel_RC_Comment(path)
+parser.perc_Rel_RC_Comment(path)
 
 ### create training, development and test sets
 
@@ -107,7 +96,8 @@ training_fraction = 0.80 # fraction of the data that is used for training
 
 # NOTE: [1 - training_fraction] fraction of the dataset will be divided randomly and equally into evaluation and test sets
 
-Define_Sets(path,training_fraction,NN=True)
+nnmodel=NNModel(training_fraction=training_fraction)
+nnmodel.Define_Sets()
 
 ## Read and index the content of comments in each set
 
@@ -115,10 +105,9 @@ print("Vocabulary size = " + str(MaxVocab),file=perf)
 print("Frequency filter = below " + str(FrequencyFilter),file=perf)
 
 for set_key in set_key_list:
-    Index_Set(path,set_key,MaxVocab,FrequencyFilter)
+    nnmodel.Index_Set(set_key)
 
 ## if classifying, load comment labels from file
-
 if classifier == True:
     vote['train'],vote['dev'],vote['test'] = Get_Votes(path)
 

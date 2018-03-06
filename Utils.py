@@ -36,7 +36,6 @@ def CpuInfo():
 
     return physical_cpu_count - 1
 
-
 ### Function for writing parameters and model performance to file
 ## TODO: Write a separate set of variables to file for NN
 def Write_Performance(output_path=output_path, NN=NN):
