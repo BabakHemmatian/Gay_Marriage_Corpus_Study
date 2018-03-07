@@ -276,9 +276,7 @@ class ModelEstimator(object):
 
                     # ensure set sizes are correct
                     assert len(self.sets['dev']) - len(self.sets['test']) < 1
-                    # TODO: Ask Babak about the change below
-                    #assert len(self.sets['dev']) + len(self.sets['test']) + len(self.sets['train']) == len(indices)
-                    l=indices[-1] if self.all_ else len(indices)
+                    l=indices[-1] if (self.all_ and not self.regression) else len(indices)
                     assert len(self.sets['dev']) + len(self.sets['test']) + len(self.sets['train']) == l
 
                 else: # for LDA
