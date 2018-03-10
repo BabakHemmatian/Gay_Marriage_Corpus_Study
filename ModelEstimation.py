@@ -647,14 +647,12 @@ class LDAModel(ModelEstimator):
         indexed_dataset = self.Get_Indexed_Dataset()
 
         ## call the multiprocessing function on the dataset
-        #pool = multiprocessing.Pool(processes=CpuInfo())
-        #inputs=[ (indexed_comment, self.__dict__) for indexed_comment in
-        #         indexed_dataset ]
-        #pool.map(func=Topic_Asgmt_Retriever_Multi_wrapper, iterable=inputs)
-        #pool.close()
-        #pool.join()
-        for indexed_comment in indexed_dataset:
-            self.Topic_Asgmt_Retriever_Multi(indexed_comment)
+        pool = multiprocessing.Pool(processes=CpuInfo())
+        inputs=[ (indexed_comment, self.__dict__) for indexed_comment in
+                 indexed_dataset ]
+        pool.map(func=Topic_Asgmt_Retriever_Multi_wrapper, iterable=inputs)
+        pool.close()
+        pool.join()
 
         ## Gather yearly topic contribution estimates in one matrix
         yearly_output = []
