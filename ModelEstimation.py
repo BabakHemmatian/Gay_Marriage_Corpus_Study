@@ -33,7 +33,7 @@ def theta_func(dataset, ldamodel, report):
 def Get_LDA_Model(indexed_document, ldamodel, report):
     # get topic probabilities for the document
     topics = ldamodel.get_document_topics(indexed_document[1],
-                                          minimum_probability=None)
+        minimum_probability=self.minimum_probability)
 
     # create a tuple including the comment index, the likely top topics and the
     # contribution of each topic to that comment if it is non-zero
@@ -276,9 +276,7 @@ class ModelEstimator(object):
 
                     # ensure set sizes are correct
                     assert len(self.sets['dev']) - len(self.sets['test']) < 1
-                    # TODO: Ask Babak about the change below
-                    #assert len(self.sets['dev']) + len(self.sets['test']) + len(self.sets['train']) == len(indices)
-                    l=indices[-1] if self.all_ else len(indices)
+                    l=indices[-1] if (self.all_ and not self.regression) else len(indices)
                     assert len(self.sets['dev']) + len(self.sets['test']) + len(self.sets['train']) == l
 
                 else: # for LDA
@@ -318,7 +316,8 @@ class LDAModel(ModelEstimator):
                  min_comm_length=min_comm_length,
                  minimum_phi_value=minimum_phi_value,
                  minimum_probability=minimum_probability, no_above=no_above,
-                 no_below=no_below, num_topics=num_topics, relevant_year=None,
+                 no_below=no_below, num_topics=num_topics,
+                 one_hot=one_hot_topic_contributions, relevant_year=None,
                  sample_comments=sample_comments, stop=stop,
                  train_word_count=None, **kwargs):
         ModelEstimator.__init__(self, **kwargs)
@@ -341,6 +340,7 @@ class LDAModel(ModelEstimator):
         self.no_above=no_above
         self.no_below=no_below
         self.num_topics=num_topics
+        self.one_hot=one_hot
         self.relevant_year=relevant_year
         self.sample_comments=sample_comments
         self.stop=stop
@@ -561,21 +561,41 @@ class LDAModel(ModelEstimator):
         ## for each word in the comment:
         if len(indexed_comment[1].strip().split()) == 1: # if comment only consists of one word after preprocessing
             if indexed_comment[1].strip() in self.dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
-                term_topics = self.ldamodel.get_term_topics(self.dictionary.token2id[indexed_comment[1].strip()]) # get topic distribution for the word based on trained model
+                term_topics = self.ldamodel.get_term_topics(self.dictionary.token2id[indexed_comment[1].strip()],
+                    minimum_probability=self.minimum_probability) # get topic distribution for the word based on trained model
                 if len(term_topics) != 0: # if a topic with non-trivial probability is found
                     # find the most likely topic for that word according to the trained model
-                    topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
-
-                    dxt[topic_asgmt,0] += 1 # record the topic assignment
+                    if self.one_hot:
+                        topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
+                        dxt[topic_asgmt,0] += 1 # record the topic assignment
+                    else:
+                        assert essentially_eq(sum([ topic[1] for topic in term_topics ]), 1)
+                        for topic, prob in term_topics:
+                            dxt[topic,0] += prob
                     analyzed_comment_length += 1 # update word counter
 
         else: # if comment consists of more than one word
-            topics = self.ldamodel.get_document_topics(self.dictionary.doc2bow(indexed_comment[1].strip().split()),per_word_topics=True) # get per-word topic probabilities for the document
+            comment=indexed_comment[1].strip().split()
+            topics = self.ldamodel.get_document_topics(self.dictionary.doc2bow(comment),
+                minimum_phi_value=self.minimum_probability,
+                minimum_probability=self.minimum_probability,
+                per_word_topics=True) # get per-word topic probabilities for the document
 
-            for wt_tuple in topics[1]: # iterate over the word-topic assignments
+            for wt_tuple in topics[2]: # iterate over the word-topic assignments
+                word=self.dictionary[wt_tuple[0]]
+                # Store this because we want to multiply a word's topic
+                # assignment by the number of times it occurs
+                n_occurences=comment.count(word)
                 if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
                     # record the most likely topic according to the trained model
-                    dxt[wt_tuple[1][0],0] += 1
+                    topic_asgmts=sorted(wt_tuple[1], key=lambda x:x[1], reverse=True)
+                    if self.one_hot:
+                        dxt[topic_asgmts[0][0],0] += n_occurences
+                    else:
+                        assert essentially_eq(sum([ topic[1] for topic in topic_asgmts ]),
+                                              n_occurences)
+                        for topic, phi_val in topic_asgmts:
+                            dxt[topic,0] += phi_val
                     analyzed_comment_length += 1 # update word counter
 
         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
@@ -627,12 +647,14 @@ class LDAModel(ModelEstimator):
         indexed_dataset = self.Get_Indexed_Dataset()
 
         ## call the multiprocessing function on the dataset
-        pool = multiprocessing.Pool(processes=CpuInfo())
-        inputs=[ (indexed_comment, self.__dict__) for indexed_comment in
-                 indexed_dataset ]
-        pool.map(func=Topic_Asgmt_Retriever_Multi_wrapper, iterable=inputs)
-        pool.close()
-        pool.join()
+        #pool = multiprocessing.Pool(processes=CpuInfo())
+        #inputs=[ (indexed_comment, self.__dict__) for indexed_comment in
+        #         indexed_dataset ]
+        #pool.map(func=Topic_Asgmt_Retriever_Multi_wrapper, iterable=inputs)
+        #pool.close()
+        #pool.join()
+        for indexed_comment in indexed_dataset:
+            self.Topic_Asgmt_Retriever_Multi(indexed_comment)
 
         ## Gather yearly topic contribution estimates in one matrix
         yearly_output = []
@@ -649,7 +671,8 @@ class LDAModel(ModelEstimator):
             for i in range(no_years):
                 yearly_output[i,:] = ( float(1) / (float(random_counts[i]) - no_predictions[i].value )) * yearly_output[i,:]
 
-        np.savetxt(self.output_path+"/yr_topic_cont", yearly_output) # save the topic contribution matrix to file
+        np.savetxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"),
+                   yearly_output) # save the topic contribution matrix to file
 
         # timer
         print("Finished calculating topic contributions at "+time.strftime('%l:%M%p'))
@@ -659,10 +682,11 @@ class LDAModel(ModelEstimator):
     ### Function that checks for a topic contribution matrix on file and calls for its calculation if there is none
     def Get_Topic_Contribution(self):
         # check to see if topic contributions have already been calculated
-        if not Path(self.output_path+'/yr_topic_cont').is_file(): # if not
+        if not Path(self.output_path+'/yr_topic_cont_{}'.format("one-hot" if self.one_hot else "distributions")).is_file(): # if not
             # calculate the contributions
             yr_topic_cont, indexed_dataset = self.Topic_Contribution_Multicore()
-            np.savetxt(self.output_path+"/yr_topic_cont", yr_topic_cont) # save the topic contribution matrix to file
+            np.savetxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"),
+                       yr_topic_cont) # save the topic contribution matrix to file
 
             self.indexed_dataset=indexed_dataset
             return yr_topic_cont
@@ -674,7 +698,8 @@ class LDAModel(ModelEstimator):
             if Q == 'Y' or Q == 'y': # re-calculate
                 # calculate the contributions
                 yr_topic_cont, indexed_dataset = self.Topic_Contribution_Multicore()
-                np.savetxt(self.output_path+"/yr_topic_cont", yr_topic_cont) # save the topic contribution matrix to file
+                np.savetxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"),
+                           yr_topic_cont) # save the topic contribution matrix to file
 
                 self.indexed_dataset=indexed_dataset
                 return yr_topic_cont
@@ -683,7 +708,7 @@ class LDAModel(ModelEstimator):
                 print("Loading topic contributions and indexed dataset from file")
 
                 indexed_dataset = self.Get_Indexed_Dataset()
-                yr_topic_cont = np.loadtxt(self.output_path+"/yr_topic_cont")
+                yr_topic_cont = np.loadtxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"))
 
                 self.indexed_dataset=indexed_dataset
                 return yr_topic_cont
