@@ -95,3 +95,6 @@ def Yearly_Counts(path=path):
     assert cumm_rel_year[-1] == timelist[-1]
 
     return relevant_year,cumm_rel_year
+
+def essentially_eq(a, b):
+    return abs(a-b)<=1e-5
