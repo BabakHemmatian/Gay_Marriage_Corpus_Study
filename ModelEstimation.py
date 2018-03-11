@@ -596,7 +596,7 @@ class LDAModel(ModelEstimator):
                                               n_occurences)
                         for topic, phi_val in topic_asgmts:
                             dxt[topic,0] += phi_val
-                    analyzed_comment_length += 1 # update word counter
+                    analyzed_comment_length += n_occurences # update word counter
 
         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
             dxt = (float(1) / float(analyzed_comment_length)) * dxt # normalize the topic contribution using comment length
