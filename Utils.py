@@ -96,5 +96,37 @@ def Yearly_Counts(path=path):
 
     return relevant_year,cumm_rel_year
 
+### calculate the monthly relevant comment counts
+# TODO: It would be much more elegant if this was combined with Yearly_Counts.
+def Monthly_Counts(path=path):
+    # check for monthly relevant comment counts
+    if not Path(path+'/RC_Count_List').is_file():
+        raise Exception('The cummulative monthly counts could not be found')
+
+    # load monthly relevant comment counts
+    with open(path+"/RC_Count_List",'r') as f:
+        timelist = []
+        for line in f:
+            if line.strip() != "":
+                timelist.append(int(line))
+
+    # calculate the cummulative monthly counts
+    # intialize lists and counters
+    cumm_rel_month = [] # cummulative number of comments per month
+    relevant_month = [] # number of comments per month
+
+    # iterate through monthly counts
+    for index,number in enumerate(timelist): # for each month
+        cumm_rel_month.append(number) # add the cummulative count
+        if index == 0: # for the first month
+            relevant_month.append(number) # append the cummulative value to number of comments per year
+        else: # for the other months, subtract the last two cummulative values to find the number of relevant comments in that year
+            relevant_month.append(number - cumm_rel_month[-2])
+
+    assert sum(relevant_month) == cumm_rel_month[-1]
+    assert cumm_rel_month[-1] == timelist[-1]
+
+    return relevant_month,cumm_rel_month
+
 def essentially_eq(a, b):
     return abs(a-b)<=1e-5
