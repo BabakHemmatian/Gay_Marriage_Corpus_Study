@@ -558,45 +558,28 @@ class LDAModel(ModelEstimator):
         dxt = np.zeros([num_topics,1]) # a vector for the normalized contribution of each topic to the comment
         analyzed_comment_length = 0 # a counter for the number of words in a comment for which the model has predictions
 
-        ## for each word in the comment:
-        if len(indexed_comment[1].strip().split()) == 1: # if comment only consists of one word after preprocessing
-            if indexed_comment[1].strip() in self.dictionary.values(): # if word is in the dictionary (so that predictions can be derived for it)
-                term_topics = self.ldamodel.get_term_topics(self.dictionary.token2id[indexed_comment[1].strip()],
-                    minimum_probability=self.minimum_probability) # get topic distribution for the word based on trained model
-                if len(term_topics) != 0: # if a topic with non-trivial probability is found
-                    # find the most likely topic for that word according to the trained model
-                    if self.one_hot:
-                        topic_asgmt = term_topics[np.argmax(zip(*term_topics)[1])][0]
-                        dxt[topic_asgmt,0] += 1 # record the topic assignment
-                    else:
-                        assert essentially_eq(sum([ topic[1] for topic in term_topics ]), 1)
-                        for topic, prob in term_topics:
-                            dxt[topic,0] += prob
-                    analyzed_comment_length += 1 # update word counter
+        comment=indexed_comment[1].strip().split()
+        topics = self.ldamodel.get_document_topics(self.dictionary.doc2bow(comment),
+            minimum_phi_value=self.minimum_probability,
+            minimum_probability=self.minimum_probability,
+            per_word_topics=True) # get per-word topic probabilities for the document
 
-        else: # if comment consists of more than one word
-            comment=indexed_comment[1].strip().split()
-            topics = self.ldamodel.get_document_topics(self.dictionary.doc2bow(comment),
-                minimum_phi_value=self.minimum_probability,
-                minimum_probability=self.minimum_probability,
-                per_word_topics=True) # get per-word topic probabilities for the document
-
-            for wt_tuple in topics[2]: # iterate over the word-topic assignments
-                word=self.dictionary[wt_tuple[0]]
-                # Store this because we want to multiply a word's topic
-                # assignment by the number of times it occurs
-                n_occurences=comment.count(word)
-                if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
-                    # record the most likely topic according to the trained model
-                    topic_asgmts=sorted(wt_tuple[1], key=lambda x:x[1], reverse=True)
-                    if self.one_hot:
-                        dxt[topic_asgmts[0][0],0] += n_occurences
-                    else:
-                        assert essentially_eq(sum([ topic[1] for topic in topic_asgmts ]),
-                                              n_occurences)
-                        for topic, phi_val in topic_asgmts:
-                            dxt[topic,0] += phi_val
-                    analyzed_comment_length += n_occurences # update word counter
+        for wt_tuple in topics[2]: # iterate over the word-topic assignments
+            word=self.dictionary[wt_tuple[0]]
+            # Store this because we want to multiply a word's topic
+            # assignment by the number of times it occurs
+            n_occurences=comment.count(word)
+            if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
+                # record the most likely topic according to the trained model
+                topic_asgmts=sorted(wt_tuple[1], key=lambda x:x[1], reverse=True)
+                if self.one_hot:
+                    dxt[topic_asgmts[0][0],0] += n_occurences
+                else:
+                    assert essentially_eq(sum([ topic[1] for topic in topic_asgmts ]),
+                        n_occurences)
+                    for topic, phi_val in topic_asgmts:
+                        dxt[topic,0] += phi_val
+                analyzed_comment_length += n_occurences # update word counter
 
         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
             dxt = (float(1) / float(analyzed_comment_length)) * dxt # normalize the topic contribution using comment length
