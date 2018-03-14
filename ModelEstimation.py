@@ -559,27 +559,28 @@ class LDAModel(ModelEstimator):
         analyzed_comment_length = 0 # a counter for the number of words in a comment for which the model has predictions
 
         comment=indexed_comment[1].strip().split()
-        topics = self.ldamodel.get_document_topics(self.dictionary.doc2bow(comment),
-            minimum_phi_value=self.minimum_probability,
-            minimum_probability=self.minimum_probability,
-            per_word_topics=True) # get per-word topic probabilities for the document
+        bow=self.dictionary.doc2bow(comment)
+        # get per-word topic probabilities for the document
+        gamma, phis = self.ldamodel.inference([bow], collect_sstats=True)
 
-        for wt_tuple in topics[2]: # iterate over the word-topic assignments
-            word=self.dictionary[wt_tuple[0]]
-            # Store this because we want to multiply a word's topic
-            # assignment by the number of times it occurs
-            n_occurences=comment.count(word)
-            if len(wt_tuple[1]) != 0: # if the model has predictions for the specific word
-                # record the most likely topic according to the trained model
-                topic_asgmts=sorted(wt_tuple[1], key=lambda x:x[1], reverse=True)
-                if self.one_hot:
-                    dxt[topic_asgmts[0][0],0] += n_occurences
-                else:
-                    assert essentially_eq(sum([ topic[1] for topic in topic_asgmts ]),
-                        n_occurences)
-                    for topic, phi_val in topic_asgmts:
-                        dxt[topic,0] += phi_val
-                analyzed_comment_length += n_occurences # update word counter
+        for word_id, freq in bow: # iterate over the word-topic assignments
+            try:
+                phi_values=[ phis[i][word_id] for i in range(self.num_topics) ]
+            except KeyError:
+                # Make sure the word either has a probability assigned to all
+                # topics, or to no topics
+                assert all([ word_id not in phis[i] for i in range(self.num_topics) ])
+                continue
+            if self.one_hot:
+                topic_asgmts=sorted(enumerate(phi_values), key=lambda x:x[1],
+                                    reverse=True)
+                dxt[topic_asgmts[0][0],0] += freq
+            else:
+                assert len(phi_values)==self.num_topics
+                assert essentially_eq(sum(phi_values), freq)
+                for topic, phi_val in enumerate(phi_values):
+                    dxt[topic,0] += phi_val
+            analyzed_comment_length += freq # update word counter
 
         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
             dxt = (float(1) / float(analyzed_comment_length)) * dxt # normalize the topic contribution using comment length
