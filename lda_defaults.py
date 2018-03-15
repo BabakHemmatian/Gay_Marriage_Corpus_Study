@@ -46,10 +46,8 @@ num_threads = 5 # number of threads used for parallelized processing of comments
 num_topics = 75 # number of topics to be generated in each LDA sampling
 alpha = 0.1 # determines how many high probability topics will be assigned to a
 # document in general (not to be confused with NN l2regularization constant)
-# @BabakHemmatian, will this change be problematic
-#minimum_probability = 0.01 # minimum acceptable probability for an output topic
+minimum_probability = 0.01 # minimum acceptable probability for an output topic
 # across corpus
-minimum_probability = 1e-8
 eta = 0.1 # determines how many high probability words will be assigned to a
 # topic in general
 minimum_phi_value = 0.01 # determines the lower bound on per-term topic
