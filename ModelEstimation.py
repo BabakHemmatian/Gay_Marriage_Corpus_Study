@@ -107,11 +107,11 @@ class ModelEstimator(object):
 
             else: # if doing regression on sampled comments
                 # check to see if human comment ratings can be found on disk
-                if not Path(self.output_path+'/sample_ratings.csv').is_file():
+                if not Path(self.fns["sample_ratings"]).is_file():
                     raise Exception("Human comment ratings for regressor training could not be found on file.")
 
                 # retrieve the number of comments for which there are complete human ratings
-                with open(self.output_path+'/sample_ratings.csv','r+b') as csvfile:
+                with open(self.fns["sample_ratings"],'r+b') as csvfile:
                     reader = csv.reader(csvfile)
                     human_ratings = [] # initialize counter for the number of valid human ratings
                     # read human data for sampled comments one by one
@@ -179,21 +179,21 @@ class ModelEstimator(object):
     ### function for loading, calculating, or recalculating sets
     def Define_Sets(self):
         # load the number of comments or raise Exception if they can't be found
-        findices='RC_Count_List' if self.all_ else 'random_indices'
+        findices=self.fns["counts"]
         try:
-            assert findices in os.listdir(self.path)
+            assert os.path.exists(findices)
         except AssertionError:
             raise Exception("File {} not found.".format(findices))
 
-        indices=open(self.path+'/'+findices, 'r').read().split()
+        indices=open(findices, 'r').read().split()
         indices=filter(lambda x:x.strip(), indices)
         indices=map(int, indices)
 
         # if indexed comments are available (NN)
         if (isinstance(self, NNModel) and
-            Path(self.path+"/indexed_train_"+str(self.regression)).is_file() and
-            Path(self.path+"/indexed_dev_"+str(self.regression)).is_file() and
-            Path(self.path+"/indexed_test_"+str(self.regression)).is_file()):
+            Path(self.fns["train_set"]).is_file() and
+            Path(self.fns["dev_set"]).is_file() and
+            Path(self.fns["test_set"]).is_file()):
 
             # determine if the comments and their relevant indices should be deleted and re-initialized or the sets should just be loaded
             Q = raw_input("Indexed comments are already available. Do you wish to delete sets and create new ones [Y/N]?")
@@ -204,25 +204,25 @@ class ModelEstimator(object):
 
                 # delete previous record
                 for set_key in self.set_key_list:
-                    if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file():
-                        os.remove(self.path+"/indexed_"+set_key+"_"+str(self.regression))
-                    if Path(self.path+"/"+set_key+"_set_"+str(self.regression)).is_file():
-                        os.remove(self.path+"/"+set_key+"_set_"+str(self.regression))
+                    if Path(self.fns["indexed_{}_set".format(set_key)]).is_file():
+                        os.remove(self.fns["indexed_{}_set".format(set_key)])
+                    if Path(self.fns["{}_set".format(set_key)]).is_file():
+                        os.remove(self.fns["{}_set".format(set_key)])
 
                 self.Create_New_Sets(indices) # create sets
 
             # If recreating is not requested, attempt to load the sets
             elif Q == "N" or Q == "n":
                 # if the sets are found, load them
-                if ( Path(self.path+"/train_set_"+str(self.regression)).is_file()
-                     and Path(self.path+"/dev_set_"+str(self.regression)).is_file()
-                     and Path(self.path+"/test_set_"+str(self.regression)).is_file()
+                if ( Path(self.fns["train_set"]).is_file()
+                     and Path(self.fns["dev_set"]).is_file()
+                     and Path(self.fns["test_set"]).is_file()
                    ):
 
                     print("Loading sets from file")
 
                     for set_key in self.set_key_list:
-                        with open(self.path+'/'+set_key + '_set_' + str(self.regression),'r') as f:
+                        with open(self.fns["{}_set".format(set_key)],'r') as f:
                             for line in f:
                                 if line.strip() != "":
                                     self.sets[set_key].append(int(line))
@@ -237,10 +237,10 @@ class ModelEstimator(object):
 
                     # delete partial record
                     for set_key in self.set_key_list:
-                        if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file():
-                            os.remove(self.path+"/indexed_"+set_key+"_"+str(self.regression))
-                        if Path(self.path+"/"+set_key+"_set").is_file():
-                            os.remove(self.path+"/"+set_key+"_set_"+str(self.regression))
+                        if Path(self.fns["indexed_{}_set".format(set_key)]).is_file():
+                            os.remove(self.fns["indexed_{}_set".format(set_key)])
+                        if Path(self.fns["{}_set".format(set_key)]).is_file():
+                            os.remove(self.fns["{}_set".format(set_key)])
 
                     self.Create_New_Sets(indices) # create sets
 
@@ -252,23 +252,23 @@ class ModelEstimator(object):
             # delete any possible partial indexed set
             if isinstance(self, NNModel):
                 for set_key in self.set_key_list:
-                    if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file():
-                        os.remove(self.path+"/indexed_"+set_key+"_"+str(self.regression))
+                    if Path(self.fns["indexed_{}_set".format(set_key)]).is_file():
+                        os.remove(self.fns["indexed_{}_set".format(set_key)])
 
             # check to see if there are sets available, if so load them
             if (isinstance(self, NNModel) and
-                Path(self.path+"/train_set_"+str(self.regression)).is_file() and
-                Path(self.path+"/dev_set_"+str(self.regression)).is_file() and
-                Path(self.path+"/test_set_"+str(self.regression)).is_file()
+                Path(self.fns["train_set"]).is_file() and
+                Path(self.fns["dev_set"]).is_file() and
+                Path(self.fns["test_set"]).is_file()
                ) or (not isinstance(self, NNModel) and
-                Path(self.path+"/LDA_train_set_"+str(self.all_)).is_file() and
-                Path(self.path+"/LDA_eval_set_"+str(self.all_)).is_file()):
+                Path(self.fns["train_set"]).is_file() and
+                Path(self.fns["eval_set"]).is_file()):
 
                 print("Loading sets from file")
 
                 if isinstance(self, NNModel): # for NN
                     for set_key in self.set_key_list:
-                        with open(self.path+'/'+set_key + '_set_'+str(self.regression),'r') as f:
+                        with open(self.fns["{}_set".format(set_key)],'r') as f:
                             for line in f:
                                 if line.strip() != "":
                                     self.sets[set_key].append(int(line))
@@ -281,7 +281,7 @@ class ModelEstimator(object):
 
                 else: # for LDA
                     for set_key in self.LDA_set_keys:
-                        with open(self.path+"/LDA_"+set_key+"_set_"+str(self.all_),'r') as f:
+                        with open(self.fns["{}_set".format(set_key)],'r') as f:
                             for line in f:
                                 if line.strip() != "":
                                     self.LDA_sets[set_key].append(int(line))
@@ -291,10 +291,10 @@ class ModelEstimator(object):
                 if isinstance(self, NNModel): # for NN
                     # delete any partial set
                     for set_key in self.set_key_list:
-                        if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file():
-                            os.remove(self.path+"/indexed_"+set_key+"_"+str(self.regression))
-                        if Path(self.path+"/"+set_key+"_set_"+str(self.regression)).is_file():
-                            os.remove(self.path+"/"+set_key+"_set_"+str(self.regression))
+                        if Path(self.fns["indexed_{}_set".format(set_key)]).is_file():
+                            os.remove(self.fns["indexed_{}_set".format(set_key)])
+                        if Path(self.fns["{}_set".format(set_key)]).is_file():
+                            os.remove(self.fns["{}_set".format(set_key)])
 
                     # create new sets
                     self.Create_New_Sets(indices)
@@ -302,8 +302,8 @@ class ModelEstimator(object):
                 else: # for LDA
                     # delete any partial set
                     for set_key in self.LDA_set_keys:
-                        if Path(self.path+"/LDA_"+set_key+"_set_"+str(self.all_)).is_file():
-                            os.remove(self.path+"/LDA_"+set_key+"_set_"+str(self.all_))
+                        if Path(self.fns["{}_set".format(set_key)]).is_file():
+                            os.remove(self.fns["{}_set".format(set_key)])
 
                     # create new sets
                     self.Create_New_Sets(indices)
@@ -311,9 +311,9 @@ class ModelEstimator(object):
 class LDAModel(ModelEstimator):
     def __init__(self, alpha=alpha, corpus=None, cumm_rel_year=None,
                  dictionary=None, eta=eta, eval_comments=None,
-                 eval_word_count=None, iterations=iterations,
-                 LDA_set_keys=[ 'train', 'eval' ], LDA_sets=None, ldamodel=None,
-                 min_comm_length=min_comm_length,
+                 eval_word_count=None, fns=dict(), indexed_dataset=None,
+                 iterations=iterations, LDA_set_keys=[ 'train', 'eval' ],
+                 LDA_sets=None, ldamodel=None, min_comm_length=min_comm_length,
                  minimum_phi_value=minimum_phi_value,
                  minimum_probability=minimum_probability, no_above=no_above,
                  no_below=no_below, num_topics=num_topics,
@@ -328,6 +328,7 @@ class LDAModel(ModelEstimator):
         self.eta=eta
         self.eval_comments=eval_comments
         self.eval_word_count=eval_word_count
+        self.indexed_dataset=indexed_dataset
         self.iterations=iterations
         self.LDA_set_keys=LDA_set_keys
         self.LDA_sets=LDA_sets
@@ -345,40 +346,61 @@ class LDAModel(ModelEstimator):
         self.sample_comments=sample_comments
         self.stop=stop
         self.train_word_count=train_word_count
+        self.fns=self.get_fns(**fns)
+
+    def get_fns(self, **kwargs):
+        fns={ "original_comm":"{}/original_comm".format(self.path),
+              "lda_prep":"{}/lda_prep".format(self.path),
+              "counts": "{}/{}".format(self.path, "RC_Count_List" if self.all_ else "random_indices"),
+              "train_set": "{}/LDA_train_set_{}".format(self.path, self.all_),
+              "eval_set":"{}/LDA_eval_set_{}".format(self.path, self.all_),
+              "corpus":"{}/RC_LDA_Corpus_{}.mm".format(self.path, self.all_),
+              "eval":"{}/RC_LDA_Eval_{}.mm".format(self.path, self.all_),
+              "dictionary":"{}/RC_LDA_Dict_{}.dict".format(self.path, self.all_),
+              "train_word_count":"{}/train_word_count_{}".format(self.path, self.all_),
+              "eval_word_count":"{}/eval_word_count_{}".format(self.path, self.all_),
+              "model":"{}/RC_LDA_{}_{}.lda".format(self.path, self.num_topics, self.all_),
+              "performance": "{}/Performance".format(self.output_path),
+              "topic_cont":"{}/yr_topic_cont_{}".format(self.output_path, "one-hot" if self.one_hot else "distributions"),
+              "theta":"{}/theta".format(self.output_path),
+              "sample_ratings": "{}/sample_ratings.csv".format(self.output_path),
+              "sampled_comments":"{}/sampled_comments".format(self.output_path)
+            }
+        for k, v in kwargs.items():
+            fns[k]=v
+        return fns
 
     ### Function for reading and indexing a pre-processed corpus for LDA
     def LDA_Corpus_Processing(self):
         # check the existence of pre-processed data and sets
-        if not Path(self.path+'/lda_prep').is_file():
+        if not Path(self.fns["lda_prep"]).is_file():
             raise Exception('Pre-processed data could not be found')
-        if ( not Path(self.path+'/LDA_train_set_'+str(self.all_)).is_file() or
-             not Path(self.path+'/LDA_eval_set_'+str(self.all_)).is_file() ):
+        if ( not Path(self.fns["train_set"]).is_file() or
+             not Path(self.fns["eval_set"]).is_file() ):
             raise Exception('Comment sets could not be found')
 
         # open the file storing pre-processed comments
-        f = open(self.path+'/lda_prep','r')
+        f = open(self.fns["lda_prep"],'r')
 
         # check to see if the corpus has previously been processed
-        required_files = ['RC_LDA_Corpus_'+str(self.all_)+'.mm',
-                          'RC_LDA_Eval_'+str(self.all_)+'.mm',
-                          'RC_LDA_Dict_'+str(self.all_)+'.dict',
-                          'train_word_count_'+str(self.all_),
-                          'eval_word_count_'+str(self.all_)]
+        required_files = [self.fns["corpus"], self.fns["eval"],
+                          self.fns["dictionary"], self.fns["train_word_count"],
+                          self.fns["eval_word_count"]]
         missing_file = 0
         for saved_file in required_files:
-            if not Path(self.path+'/'+saved_file).is_file():
+            if not Path(saved_file).is_file():
                 missing_file += 1
 
         # if there is a complete extant record, load it
         if missing_file == 0:
-            corpus = gensim.corpora.MmCorpus(self.path+'/RC_LDA_Corpus_'+str(self.all_)+'.mm')
-            eval_comments = gensim.corpora.MmCorpus(self.path+'/RC_LDA_Eval_'+str(self.all_)+'.mm')
-            dictionary = gensim.corpora.Dictionary.load(self.path+'/RC_LDA_Dict_'+str(self.all_)+'.dict')
-            with open(self.path+'/train_word_count_'+str(self.all_)) as g:
+            corpus = gensim.corpora.MmCorpus(self.fns["corpus"])
+            eval_comments = gensim.corpora.MmCorpus(self.fns["eval"])
+            dictionary = gensim.corpora.Dictionary.load(self.fns["dictionary"])
+            with open(self.fns["train_word_count"]) as g:
                 for line in g:
                     if line.strip() != "":
                         train_word_count = int(line)
-            with open(self.path+'/eval_word_count_'+str(self.all_)) as h:
+            with open(self.fns["eval_word_count"]) as h:
                 for line in h:
                     if line.strip() != "":
                         eval_word_count = int(line)
@@ -388,8 +410,8 @@ class LDAModel(ModelEstimator):
         # delete any incomplete corpus record
         elif missing_file > 0 and missing_file != len(required_files):
             for saved_file in required_files:
-                if Path(self.path+'/'+saved_file).is_file():
-                    os.remove(self.path+'/'+saved_file)
+                if Path(saved_file).is_file():
+                    os.remove(saved_file)
             missing_file = len(required_files)
 
         # if there are no saved corpus files
@@ -437,11 +459,11 @@ class LDAModel(ModelEstimator):
                     continue
 
             # write the number of words in the frequency-filtered corpus to file
-            with open(self.path+'/train_word_count_'+str(self.all_),'w') as u:
+            with open(self.fns["train_word_count"],'w') as u:
                 print(train_word_count,file=u)
 
             # write the number of words in the frequency-filtered evaluation set to file
-            with open(self.path+'/eval_word_count_'+str(self.all_),'w') as w:
+            with open(self.fns["eval_word_count"],'w') as w:
                 print(eval_word_count,file=w)
 
             ## create the dictionary
@@ -450,13 +472,13 @@ class LDAModel(ModelEstimator):
             dictionary.add_documents(eval_comments,prune_at=self.MaxVocab) # add evaluation set
             dictionary.filter_extremes(no_below=self.no_below,
                                        no_above=self.no_above, keep_n=MaxVocab) # filter extremes
-            dictionary.save(self.path+'/RC_LDA_Dict_'+str(self.all_)+'.dict') # save dictionary to file for future use
+            dictionary.save(self.fns["dictionary"]) # save dictionary to file for future use
 
             ## create the Bag of Words (BOW) datasets
             corpus = [dictionary.doc2bow(text) for text in texts] # turn training comments into BOWs
             eval_comments = [dictionary.doc2bow(text) for text in eval_comments] # turn evaluation comments into BOWs
-            gensim.corpora.MmCorpus.serialize(self.path+'/RC_LDA_Corpus_'+str(self.all_)+'.mm', corpus) # save indexed data to file for future use (overwrites any previous versions)
-            gensim.corpora.MmCorpus.serialize(self.path+'/RC_LDA_Eval_'+str(self.all_)+'.mm', eval_comments) # save the evaluation set to file
+            gensim.corpora.MmCorpus.serialize(self.fns["corpus"], corpus) # save indexed data to file for future use (overwrites any previous versions)
+            gensim.corpora.MmCorpus.serialize(self.fns["eval"], eval_comments) # save the evaluation set to file
 
             # timer
             print("Finished creating the dictionary and the term-document matrices at "+time.strftime('%l:%M%p'))
@@ -469,7 +491,7 @@ class LDAModel(ModelEstimator):
 
     ### Train or load a trained model
     def get_model(self):
-        if not Path(self.path+'/RC_LDA_'+str(self.num_topics)+'_'+str(self.all_)+'.lda').is_file(): # if there are no trained models, train on the corpus
+        if not Path(self.fns["model"]).is_file(): # if there are no trained models, train on the corpus
             # timer
             print("Started training LDA model at "+time.strftime('%l:%M%p'))
 
@@ -489,7 +511,7 @@ class LDAModel(ModelEstimator):
                                 minimum_probability=self.minimum_probability,
                                 per_word_topics=True,
                                 minimum_phi_value=self.minimum_phi_value)
-            self.ldamodel.save(self.path+'/RC_LDA_'+str(self.num_topics)+'_'+str(self.all_)+'.lda') # save learned model to file for future use
+            self.ldamodel.save(self.fns["model"]) # save learned model to file for future use
 
             # timer
             print("Finished training model at "+time.strftime('%l:%M%p'))
@@ -497,7 +519,7 @@ class LDAModel(ModelEstimator):
         else: # if there is a trained model, load it from file
             print("Loading the trained LDA model from file")
 
-            self.ldamodel = gensim.models.LdaMulticore.load(self.path+'/RC_LDA_'+str(self.num_topics)+'_'+str(self.all_)+'.lda')
+            self.ldamodel = gensim.models.LdaMulticore.load(self.fns["model"])
 
     ### Get lower bounds on per-word perplexity for training and development sets (LDA)
     def Get_Perplexity(self):
@@ -518,7 +540,7 @@ class LDAModel(ModelEstimator):
         print("Finished calculating perplexity at "+time.strftime('%l:%M%p'))
 
         ## Print and save the per-word perplexity values to file
-        with open(self.output_path+"/Performance",'a+') as perf:
+        with open(self.fns["performance"],'a+') as perf:
             print("*** Perplexity ***",file=perf)
             print("Lower bound on per-word perplexity (using "+str(self.training_fraction)+" percent of documents as training set): "+str(train_per_word_perplex))
             print("Lower bound on per-word perplexity (using "+str(self.training_fraction)+" percent of documents as training set): "+str(train_per_word_perplex),file=perf)
@@ -529,14 +551,14 @@ class LDAModel(ModelEstimator):
 
     ### function for creating an enhanced version of the dataset with year and comment indices (used in topic contribution and theta calculation)
     def Get_Indexed_Dataset(self):
-        with open(self.path+'/lda_prep','r') as f:
+        with open(self.fns["lda_prep"],'r') as f:
             indexed_dataset = [] # initialize the full dataset
 
             year_counter = 0 # the first year in the corpus (2006)
 
             if not self.all_:
-                assert Path(self.path+'/random_indices').is_file()
-                with open(self.path+'/random_indices') as g:
+                assert Path(self.fns["counts"]).is_file()
+                with open(self.fns["counts"]) as g:
                     rand_subsample = []
                     for line in g:
                         if line.strip() != "":
@@ -596,12 +618,14 @@ class LDAModel(ModelEstimator):
         print("Started calculating topic contribution at " + time.strftime('%l:%M%p'))
 
         ## check for the existence of the preprocessed dataset
-        if not Path(self.path+'/lda_prep').is_file():
+        if not Path(self.fns["lda_prep"]).is_file():
             raise Exception('The preprocessed data could not be found')
 
         ## load yearly counts for randomly sampled comments if needed
 
         # check for access to counts
+        # TODO: Somehow incorporate random_indices_count into class attribute
+        # fns
         if not self.all_ and not Path(self.path+'/random_indices_count').is_file():
             raise Exception('The year by year counts for randomly sampled comments could not be found')
         # load counts
@@ -653,8 +677,7 @@ class LDAModel(ModelEstimator):
             for i in range(no_years):
                 yearly_output[i,:] = ( float(1) / (float(random_counts[i]) - no_predictions[i].value )) * yearly_output[i,:]
 
-        np.savetxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"),
-                   yearly_output) # save the topic contribution matrix to file
+        np.savetxt(self.fns["topic_cont"], yearly_output) # save the topic contribution matrix to file
 
         # timer
         print("Finished calculating topic contributions at "+time.strftime('%l:%M%p'))
@@ -664,11 +687,10 @@ class LDAModel(ModelEstimator):
     ### Function that checks for a topic contribution matrix on file and calls for its calculation if there is none
     def Get_Topic_Contribution(self):
         # check to see if topic contributions have already been calculated
-        if not Path(self.output_path+'/yr_topic_cont_{}'.format("one-hot" if self.one_hot else "distributions")).is_file(): # if not
+        if not Path(self.fns["topic_cont"]).is_file(): # if not
             # calculate the contributions
             yr_topic_cont, indexed_dataset = self.Topic_Contribution_Multicore()
-            np.savetxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"),
-                       yr_topic_cont) # save the topic contribution matrix to file
+            np.savetxt(self.fns["topic_cont"], yr_topic_cont) # save the topic contribution matrix to file
 
             self.indexed_dataset=indexed_dataset
             return yr_topic_cont
@@ -680,8 +702,7 @@ class LDAModel(ModelEstimator):
             if Q == 'Y' or Q == 'y': # re-calculate
                 # calculate the contributions
                 yr_topic_cont, indexed_dataset = self.Topic_Contribution_Multicore()
-                np.savetxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"),
-                           yr_topic_cont) # save the topic contribution matrix to file
+                np.savetxt(self.fns["topic_cont"], yr_topic_cont) # save the topic contribution matrix to file
 
                 self.indexed_dataset=indexed_dataset
                 return yr_topic_cont
@@ -690,7 +711,7 @@ class LDAModel(ModelEstimator):
                 print("Loading topic contributions and indexed dataset from file")
 
                 indexed_dataset = self.Get_Indexed_Dataset()
-                yr_topic_cont = np.loadtxt(self.output_path+"/yr_topic_cont_{}".format("one-hot" if self.one_hot else "distributions"))
+                yr_topic_cont = np.loadtxt(self.fns["topic_cont"])
 
                 self.indexed_dataset=indexed_dataset
                 return yr_topic_cont
@@ -754,11 +775,11 @@ class LDAModel(ModelEstimator):
     ### Function that calls for calculating, re-calculating or loading theta estimations for top topics
     def Get_Top_Topic_Theta(self, report):
         # check to see if theta for top topics has already been calculated
-        if not Path(output_path+'/theta').is_file(): # if not
+        if not Path(self.fns["theta"]).is_file(): # if not
             theta = self.Top_Topics_Theta_Multicore(report) # calculate theta
 
             # save theta to file
-            with open(self.output_path+'/theta','a+') as f:
+            with open(self.fns["theta"],'a+') as f:
                 for element in theta:
                     f.write(' '.join(str(number) for number in element) + '\n')
 
@@ -769,12 +790,12 @@ class LDAModel(ModelEstimator):
             Q = raw_input('Theta estimations were found on file. Do you wish to delete them and calculate probabilities again? [Y/N]')
 
             if Q == 'Y' or Q == 'y': # re-calculate
-                os.remove(self.output_path+'/theta') # delete the old records
+                os.remove(self.fns["theta"]) # delete the old records
 
                 theta = self.Top_Topics_Theta_Multicore(report) # calculate theta
 
                 # save theta to file
-                with open(self.output_path+'/theta','a+') as f:
+                with open(self.fns["theta"],'a+') as f:
                     for element in theta:
                         f.write(' '.join(str(number) for number in element) + '\n')
 
@@ -783,7 +804,7 @@ class LDAModel(ModelEstimator):
             if Q == 'N' or Q == 'n': # load from file
                 print("Loading theta from file")
 
-                with open(self.output_path+'/theta','r') as f:
+                with open(self.fns["theta"],'r') as f:
                     theta = [tuple(map(float, number.split())) for number in f]
 
                 self.theta=theta
@@ -821,7 +842,7 @@ class LDAModel(ModelEstimator):
         # find the top comments associated with each top topic
         sampled_indices,sampled_probs = self.Top_Comment_Indices(report)
 
-        if not Path(self.path+'/original_comm').is_file(): # if the original relevant comments are not already available on disk, read them from the original compressed files
+        if not Path(self.fns["original_comm"]).is_file(): # if the original relevant comments are not already available on disk, read them from the original compressed files
             # json parser
             decoder = json.JSONDecoder(encoding='utf-8')
 
@@ -835,7 +856,7 @@ class LDAModel(ModelEstimator):
                 raise Exception('No data file found')
 
             # open a CSV file for recording sampled comment values
-            with open(self.output_path+'/sample_ratings.csv','a+b') as csvfile:
+            with open(self.fns["sample_ratings"],'a+b') as csvfile:
                 writer = csv.writer(csvfile) # initialize the CSV writer
                 writer.writerow(['number','index','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
 
@@ -848,10 +869,10 @@ class LDAModel(ModelEstimator):
                     fin = bz2.BZ2File(filename,'r')
 
                     # create a file to write the sampled comments to
-                    fout = open(self.output_path+'/sampled_comments','a+')
+                    fout = open(self.fns["sampled_comments"],'a+')
 
                     # open CSV file to write the sampled comment data to
-                    csvfile = open(self.output_path+'/sample_ratings.csv','a+b')
+                    csvfile = open(self.fns["sample_ratings"],'a+b')
                     writer = csv.writer(csvfile) # initialize the CSV writer
 
                     ## read data
@@ -912,9 +933,9 @@ class LDAModel(ModelEstimator):
             print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
 
         else: # if a file containing only the original relevant comments is available on disk
-            with open(self.path+'/original_comm','a+') as fin, \
-                 open(self.output_path+'/sample_ratings.csv','a+b') as csvfile, \
-                 open(self.output_path+'/sampled_comments','a+') as fout: # determine the I/O files
+            with open(self.fns["original_comm"],'a+') as fin, \
+                 open(self.fns["sample_ratings"],'a+b') as csvfile, \
+                 open(self.fns["sampled_comments"],'a+') as fout: # determine the I/O files
 
                 sample = 0 # initialize a counter for the sampled comments
                 year_counter = 0 # initialize a counter for the comment's year
@@ -966,13 +987,31 @@ class NNModel(ModelEstimator):
         self.Max     = {key: [] for key in self.set_key_list}
         self.vote     = {key: [] for key in self.set_key_list} # for NN
 
+        self.fns=self.get_fns()
+
+    def get_fns(self, **kwargs):
+        fns={ "nn_prep":"{}/nn_prep".format(self.path),
+              "counts": "{}/{}".format(self.path, "RC_Count_List" if self.all_ else "random_indices"),
+              "dictionary":"{}/dict_{}".format(self.path, self.regression),
+              "train_set": "{}/train_{}".format(self.path, self.regression),
+              "dev_set":"{}/dev_{}".format(self.path, self.regression),
+              "test_set":"{}/test_{}".format(self.path, self.regression),
+              "indexed_train_set": "{}/indexed_train_{}".format(self.path, self.regression),
+              "indexed_dev_set":"{}/indexed_dev_{}".format(self.path, self.regression),
+              "indexed_test_set":"{}/indexed_test_{}".format(self.path, self.regression),
+              "sample_ratings": "{}/sample_ratings.csv".format(self.output_path)
+            }
+        for k, v in kwargs.items():
+            fns[k]=v
+        return fns
+
     ### load or create vocabulary and load or create indexed versions of comments in sets
     # NOTE: Only for NN. For LDA we use gensim's dictionary functions
     def Index_Set(self, set_key):
         ## record word frequency in the entire dataset
         frequency = defaultdict(int)
-        if Path(self.path+"/nn_prep").is_file(): # look for preprocessed data
-            fin = open(self.path+'/nn_prep','r')
+        if Path(self.fns["nn_prep"]).is_file(): # look for preprocessed data
+            fin = open(self.fns["nn_prep"],'r')
             for comment in fin: # for each comment
                 for token in comment.split(): # for each word
                     frequency[token] += 1 # count the number of occurrences
@@ -981,12 +1020,12 @@ class NNModel(ModelEstimator):
             raise Exception('Pre-processed dataset could not be found')
 
         # if indexed comments are available and we are trying to index the training set
-        if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file() and set_key == 'train':
+        if Path(self.fns["indexed_{}_set".format(set_key)]).is_file() and set_key == 'train':
             # If the vocabulary is available, load it
             if Path(self.path+"/dict_"+str(self.regression)).is_file():
                 print("Loading dictionary from file")
 
-                with open(self.path+"/dict_"+str(self.regression),'r') as f:
+                with open(self.fns["dictionary"],'r') as f:
                     for line in f:
                         if line.strip() != "":
                             (key, val) = line.split()
@@ -994,14 +1033,14 @@ class NNModel(ModelEstimator):
 
             else: # if the vocabulary is not available
                 # delete the possible dictionary-less indexed training set file
-                if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file():
-                    os.remove(self.path+"/indexed_"+set_key+"_"+str(self.regression))
+                if Path(self.fns["indexed_{}_set".format(set_key)]).is_file():
+                    os.remove(self.fns["indexed_{}_set".format(set_key)])
 
         # if indexed comments are available, load them
-        if Path(self.path+"/indexed_"+set_key+"_"+str(self.regression)).is_file():
+        if Path(self.fns["indexed_{}_set".format(set_key)]).is_file():
             print("Loading the set from file")
 
-            with open(self.path+"/indexed_"+set_key+"_"+str(self.regression),'r') as f:
+            with open(self.fns["indexed_{}_set".format(set_key)],'r') as f:
                 for line in f:
                     assert line.strip() != ""
                     comment = []
@@ -1079,13 +1118,13 @@ class NNModel(ModelEstimator):
 
             ## save the vocabulary to file
             if set_key == 'train':
-                vocab = open(self.path+"/dict_"+str(self.regression),'a+')
+                vocab = open(self.fns["dictionary"],'a+')
                 for word,index in self.V.iteritems():
                     print(word+" "+str(index),file=vocab)
                 vocab.close
 
             ## save the indexed datasets to file
-            with open(self.path+"/indexed_"+set_key+"_"+str(self.regression),'a+') as f:
+            with open(self.fns["indexed_{}_set".format(set_key)],'a+') as f:
                 for comment in self.indexes[set_key]:
                     assert len(comment) != 0
                     for ind,word in enumerate(comment):
