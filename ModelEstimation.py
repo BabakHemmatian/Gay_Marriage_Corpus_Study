@@ -705,7 +705,7 @@ class LDAModel(ModelEstimator):
                 np.savetxt(self.fns["topic_cont"], yr_topic_cont) # save the topic contribution matrix to file
 
                 self.indexed_dataset=indexed_dataset
-                return yr_topic_cont
+                self.yr_topic_cont=yr_topic_cont
 
             if Q == 'N' or Q == 'n': # load from file
                 print("Loading topic contributions and indexed dataset from file")
@@ -714,11 +714,25 @@ class LDAModel(ModelEstimator):
                 yr_topic_cont = np.loadtxt(self.fns["topic_cont"])
 
                 self.indexed_dataset=indexed_dataset
-                return yr_topic_cont
+                self.yr_topic_cont=yr_topic_cont
 
             else: # if the answer is neither yes, nor no
                 print("Operation aborted. Please note that loaded topic contribution matrix and indexed dataset are required for determining top topics and sampling comments.")
                 pass
+
+    # Determine the top topics
+    def get_top_topics(self, yr_topic_cont=None):
+        if isinstance(yr_topic_cont, type(None)):
+            yr_topic_cont=self.yr_topic_cont
+        # initialize a vector for average topic contribution
+        avg_cont = np.empty(num_topics)
+        for i in range(num_topics):
+            avg_cont[i] = np.mean(yr_topic_cont[:,i])
+
+        # Find the indices of the [sample_topics] fraction of topics that have
+        # the greatest average contribution to the model
+        top_topic_no = int(ceil(sample_topics*num_topics))
+        self.top_topics = avg_cont.argsort()[-top_topic_no:][::-1]
 
     ### Define a function for plotting the temporal trends in the top topics
     def Plotter(self, report, yr_topic_cont, name):
