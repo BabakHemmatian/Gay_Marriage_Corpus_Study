@@ -7,6 +7,7 @@ https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/issues/19
 from collections import defaultdict
 import gensim
 import math
+from math import ceil
 import matplotlib.pyplot as plt
 import numpy as np
 import pickle
@@ -15,11 +16,11 @@ import sys
 import thoth.thoth as thoth
 from config import *
 assert ENTIRE_CORPUS
+from ModelEstimation import LDAModel
 from Utils import *
 
 def get_topic_contribution_estimations():
-    import ModelEstimation as me
-    ldam=me.LDAModel()
+    ldam=LDAModel()
     ldam.Define_Sets()
     ldam.dictionary=gensim.corpora.Dictionary.load(path+"/RC_LDA_50_True.lda.id2word")
     ldam.get_model()
@@ -135,6 +136,21 @@ def compare_topic_distributions(distances):
     plt.legend()
     plt.title("Log(JSD) between different runs of the topic contribution calculation")
     plt.show()
+
+def compare_top_topics():
+    ldam=LDAModel()
+    top_topic_no=int(ceil(ldam.sample_topics*ldam.num_topics))
+    top_topics=np.empty((20, top_topic_no))
+    dist_files=[ "{}/yr_topic_cont_distributions_{}".format(output_path, i) for
+                 i in range(10) ]
+    onehot_files=[ "{}/yr_topic_cont_one-hot_{}".format(output_path, i) for i in
+                   range(10) ]
+    files=dict(zip(range(20), dist_files+onehot_files)) 
+    for i in range(20):
+        yr_topic_cont=np.loadtxt(files[i])
+        ldam.get_top_topics(yr_topic_cont=yr_topic_cont)
+        top_topics[i]=ldam.top_topics
+    return top_topics 
 
 if __name__=="__main__":
     distances=get_distances()
