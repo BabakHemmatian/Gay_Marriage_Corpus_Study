@@ -318,8 +318,8 @@ class LDAModel(ModelEstimator):
                  minimum_probability=minimum_probability, no_above=no_above,
                  no_below=no_below, num_topics=num_topics,
                  one_hot=one_hot_topic_contributions, relevant_year=None,
-                 sample_comments=sample_comments, stop=stop,
-                 train_word_count=None, **kwargs):
+                 sample_comments=sample_comments, sample_topics=sample_topics,
+                 stop=stop, train_word_count=None, **kwargs):
         ModelEstimator.__init__(self, **kwargs)
         self.alpha=alpha
         self.corpus=corpus
@@ -344,6 +344,7 @@ class LDAModel(ModelEstimator):
         self.one_hot=one_hot
         self.relevant_year=relevant_year
         self.sample_comments=sample_comments
+        self.sample_topics=sample_topics
         self.stop=stop
         self.train_word_count=train_word_count
         self.fns=self.get_fns(**fns)
@@ -725,13 +726,13 @@ class LDAModel(ModelEstimator):
         if isinstance(yr_topic_cont, type(None)):
             yr_topic_cont=self.yr_topic_cont
         # initialize a vector for average topic contribution
-        avg_cont = np.empty(num_topics)
-        for i in range(num_topics):
+        avg_cont = np.empty(self.num_topics)
+        for i in range(self.num_topics):
             avg_cont[i] = np.mean(yr_topic_cont[:,i])
 
         # Find the indices of the [sample_topics] fraction of topics that have
         # the greatest average contribution to the model
-        top_topic_no = int(ceil(sample_topics*num_topics))
+        top_topic_no = int(ceil(self.sample_topics*self.num_topics))
         self.top_topics = avg_cont.argsort()[-top_topic_no:][::-1]
 
     ### Define a function for plotting the temporal trends in the top topics
