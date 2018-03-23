@@ -9,6 +9,7 @@ import multiprocessing
 import nltk
 nltk.download('punkt')
 nltk.download('wordnet')
+import numpy as np
 import os
 from pathlib2 import Path
 import pickle

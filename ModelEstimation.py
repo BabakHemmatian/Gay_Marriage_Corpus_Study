@@ -101,30 +101,34 @@ class ModelEstimator(object):
         print("Creating sets")
 
         # determine number of comments in the dataset
-        if not self.regression: # if not doing regression on sampled comments
-            num_comm = indices[-1] # retrieve the total number of comments
-            indices = range(num_comm) # define sets over all comments
+        if self.all_:
+            if not self.regression: # if not doing regression on sampled comments
+                num_comm = indices[-1] # retrieve the total number of comments
+                indices = range(num_comm) # define sets over all comments
 
-        else: # if doing regression on sampled comments
-            # check to see if human comment ratings can be found on disk
-            if not Path(self.fns["sample_ratings"]).is_file():
-                raise Exception("Human comment ratings for regressor training could not be found on file.")
+            else: # if doing regression on sampled comments
+                # check to see if human comment ratings can be found on disk
+                if not Path(self.fns["sample_ratings"]).is_file():
+                    raise Exception("Human comment ratings for regressor training could not be found on file.")
 
-            # retrieve the number of comments for which there are complete human ratings
-            with open(self.fns["sample_ratings"],'r+b') as csvfile:
-                reader = csv.reader(csvfile)
-                human_ratings = [] # initialize counter for the number of valid human ratings
-                # read human data for sampled comments one by one
-                for idx,row in enumerate(reader):
-                    row = row[0].split(",")
-                    # ignore headers and record the index of comments that are interpretable and that have ratings for all three goal variables
-                    if ( idx != 0 and (row[7] != 'N' or row[7] != 'n') and
-                         row[4].isdigit() and row[5].isdigit() and
-                         row[6].isdigit() ):
-                        human_ratings.append(int(row[1]))
+                # retrieve the number of comments for which there are complete human ratings
+                with open(self.fns["sample_ratings"],'r+b') as csvfile:
+                    reader = csv.reader(csvfile)
+                    human_ratings = [] # initialize counter for the number of valid human ratings
+                    # read human data for sampled comments one by one
+                    for idx,row in enumerate(reader):
+                        row = row[0].split(",")
+                        # ignore headers and record the index of comments that are interpretable and that have ratings for all three goal variables
+                        if ( idx != 0 and (row[7] != 'N' or row[7] != 'n') and
+                             row[4].isdigit() and row[5].isdigit() and
+                             row[6].isdigit() ):
+                            human_ratings.append(int(row[1]))
 
-            num_comm = len(human_ratings) # the number of valid samples for network training
-            indices = human_ratings # define sets over sampled comments with human ratings
+                num_comm = len(human_ratings) # the number of valid samples for network training
+                indices = human_ratings # define sets over sampled comments with human ratings
+        
+        else: # if using LDA on a random subsample of the comments
+            num_comm = len(indices) # total number of sampled comments
 
         num_train = int(ceil(training_fraction * num_comm)) # size of training set
 
@@ -175,7 +179,7 @@ class ModelEstimator(object):
     ### function for loading, calculating, or recalculating sets
     def Define_Sets(self):
         # load the number of comments or raise Exception if they can't be found
-        findices=self.fns["counts"]
+        findices=self.fns["counts"] if self.all_ else self.fns["random_indices"]
         try:
             assert os.path.exists(findices)
         except AssertionError:
@@ -622,7 +626,13 @@ class LDAModel(ModelEstimator):
         ## initialize shared vectors for yearly topic contributions
         global Yearly_Running_Sums
         Yearly_Running_Sums = {}
-        no_years = len(self.cumm_rel_year)
+        if self.all_:
+            no_years = len(self.cumm_rel_year)
+        # Get per-year and cumulative-by-year counts for randomly-sampled data,
+        # too
+        else:
+            relevant_year_for_subsample, cumm_rel_year_for_subsample=Yearly_Counts(random=True)
+            no_years=len(cumm_rel_year_for_subsample)
 
         ## Create shared counters for comments for which the model has no reasonable prediction whatsoever
         global no_predictions
@@ -655,7 +665,6 @@ class LDAModel(ModelEstimator):
             for i in range(no_years): # for each year
                 yearly_output[i,:] = ( float(1) / (float(self.relevant_year[i]) - no_predictions[i].value )) * yearly_output[i,:]
         else: # if processing a random subsample
-            relevant_year_for_subsample=Yearly_Counts(random=True)[0]
             for i in range(no_years):
                 yearly_output[i,:] = ( float(1) / (float(relevant_year_for_subsample[i]) - no_predictions[i].value )) * yearly_output[i,:]
 
