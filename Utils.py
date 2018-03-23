@@ -4,6 +4,7 @@ from subprocess import check_output
 import sys
 import time
 from config import *
+import Parser
 
 def parse_colon_divided_text(txt):
     return dict(
@@ -59,13 +60,15 @@ def Write_Performance(output_path=output_path, NN=NN):
             print("Minimum term probability = " + str(minimum_phi_value),file=perf)
 
 ### calculate the yearly relevant comment counts
-def Yearly_Counts(path=path):
+def Yearly_Counts(path=path, random=False):
+    fns=Parser.Parser().get_parser_fns()
+    fn=fns["counts"] if not random else fns["counts_random"]
     # check for monthly relevant comment counts
-    if not Path(path+'/RC_Count_List').is_file():
+    if not Path(fn).is_file():
         raise Exception('The cummulative monthly counts could not be found')
 
     # load monthly relevant comment counts
-    with open(path+"/RC_Count_List",'r') as f:
+    with open(fn,'r') as f:
         timelist = []
         for line in f:
             if line.strip() != "":
@@ -98,13 +101,16 @@ def Yearly_Counts(path=path):
 
 ### calculate the monthly relevant comment counts
 # TODO: It would be much more elegant if this was combined with Yearly_Counts.
-def Monthly_Counts(path=path):
+def Monthly_Counts(path=path, random=False):
+    fns=Parser.Parser().get_parser_fns()
+    fn=fns["counts"] if not random else fns["counts_random"]
+ 
     # check for monthly relevant comment counts
-    if not Path(path+'/RC_Count_List').is_file():
+    if not Path(fn).is_file():
         raise Exception('The cummulative monthly counts could not be found')
 
     # load monthly relevant comment counts
-    with open(path+"/RC_Count_List",'r') as f:
+    with open(fn,'r') as f:
         timelist = []
         for line in f:
             if line.strip() != "":

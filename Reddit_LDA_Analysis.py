@@ -87,7 +87,7 @@ ldam.get_top_topics()
 
 ## Plot the temporal trends in the top topics
 # NOTE: The resulting figure needs to be closed before functions after this point are run
-ldam.Plotter(ldam.top_topics,yr_topic_cont,output_path+'/Temporal_Trend.png')
+ldam.Plotter(ldam.top_topics,ldam.yr_topic_cont,ldam.output_path+'/Temporal_Trend.png')
 
 ## Find the top words associated with top topics and write them to file
 with open(output_path+'/top_words','a+') as f: # create a file for storing the high-probability words
