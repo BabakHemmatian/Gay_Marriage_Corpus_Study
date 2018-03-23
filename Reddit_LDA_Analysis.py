@@ -81,25 +81,17 @@ ldam.relevant_year, ldam.cumm_rel_year = Yearly_Counts()
 # NOTE: Even with multiprocessing, this function can be slow proportional to the number of top topics, as well as the size of the dataset
 
 ## Load or calculate topic distributions and create an enhanced version of the entire dataset
-
 yr_topic_cont = ldam.Get_Topic_Contribution()
 
-### Determine the Top Topics
-avg_cont = np.empty(num_topics) # initialize a vector for average topic contribution
-for i in range(num_topics):
-    avg_cont[i] = np.mean(yr_topic_cont[:,i]) # calculate average topic contribution
-
-## Find the indices of the [sample_topics] fraction of topics that have the greatest average contribution to the model
-top_topic_no = int(ceil(sample_topics*num_topics))
-report = avg_cont.argsort()[-top_topic_no:][::-1]
+ldam.get_top_topics()
 
 ## Plot the temporal trends in the top topics
 # NOTE: The resulting figure needs to be closed before functions after this point are run
-ldam.Plotter(report,yr_topic_cont,output_path+'/Temporal_Trend.png')
+ldam.Plotter(ldam.top_topics,yr_topic_cont,output_path+'/Temporal_Trend.png')
 
 ## Find the top words associated with top topics and write them to file
 with open(output_path+'/top_words','a+') as f: # create a file for storing the high-probability words
-    for topic in report:
+    for topic in ldam.top_topics:
         print(topic,file=f)
         output = ldam.ldamodel.show_topic(topic,topn=topn)
         print(output,file=f)
@@ -107,8 +99,8 @@ with open(output_path+'/top_words','a+') as f: # create a file for storing the h
 ### Find the most Representative Comments for the Top Topics ###
 ### Retrieve the probability assigned to top topics for comments in the dataset
 # NOTE: This function only outputs the probabilities for comments of length at least [min_comm_length] with non-zero probability assigned to at least one top topic
-ldam.Get_Top_Topic_Theta(report)
+ldam.Get_Top_Topic_Theta(ldam.top_topics)
 
 ### for the top topics, choose the [sample_comments] comments that reflect the greatest contribution of those topics and write them to file
 # NOTE: If write_original was set to False during the initial parsing, this function will require the original compressed data files (and will be much slower). If not in the same directory as this file, change the "path" argument
-ldam.Get_Top_Comments(report)
+ldam.Get_Top_Comments(ldam.top_topics)
