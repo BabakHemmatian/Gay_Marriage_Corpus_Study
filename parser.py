@@ -9,6 +9,7 @@ import multiprocessing
 import nltk
 nltk.download('punkt')
 nltk.download('wordnet')
+import numpy as np
 import os
 from pathlib2 import Path
 import pickle
@@ -193,7 +194,10 @@ class Parser(object):
                   ("original_comm","{}/original_comm{}".format(self.path, suffix)),
                   ("original_indices","{}/original_indices{}".format(self.path, suffix)),
                   ("counts","{}/RC_Count_List{}".format(self.path, suffix)),
-                  ("timedict","{}/RC_Count_Dict{}".format(self.path, suffix))
+                  ("timedict","{}/RC_Count_Dict{}".format(self.path, suffix)),
+		  ("indices_random","{}/random_indices".format(self.path)),
+		  ("counts_random","{}/Random_Count_List".format(self.path)),
+		  ("timedict_random","{}/Random_Count_Dict".format(self.path))
                  ))
         if self.NN:
             fns["nn_prep"]="{}/nn_prep{}".format(self.path, suffix)
@@ -482,7 +486,7 @@ class Parser(object):
             else:
                 total_year[str(keys[3:7])] = d[keys]
 
-        relevant_year, _ = Yearly_Counts(self.path)
+        relevant_year, _ = Get_Counts(self.path, frequency="yearly")
         relevant = {}
         for idx,year in enumerate(relevant_year):
             relevant[str(2006+idx)] = year
@@ -534,22 +538,21 @@ class Parser(object):
     def select_random_comments(self, n=n_random_comments,
                                years_to_sample=years, min_n_comments=5000,
                                overwrite=OVERWRITE):
-        # File to write random comment indices to
-        fout='random_indices'
-        fcounts='random_indices_count'
+        fns=self.get_parser_fns()
+        fout=fns["indices_random"]
 
-        path=self.path+'/'
-        fout=path+fout
-        fcounts=path+fcounts
         if ( not overwrite and os.path.exists(fout) ):
             print ("{} exists. Skipping. Set overwrite to True to overwrite.".format(fout))
             return
 
         years_to_sample=sorted(years_to_sample)
-        ct_peryear, ct_cumyear=Yearly_Counts(self.path)
-        ct_lu=dict((y, i) for i, y in enumerate(years))
+        ct_peryear, ct_cumyear=Get_Counts(path=self.path, frequency="yearly")
+        ct_permonth, ct_cummonth=Get_Counts(path=self.path, frequency="monthly")
+        assert len(self.dates)==len(ct_permonth)==len(ct_cummonth)
+        ct_lu_by_year=dict((y, i) for i, y in enumerate(years))
+        ct_lu_by_month=dict(zip(self.dates, range(len(self.dates))))
         early_years=[ yr for yr in years_to_sample if
-                      ct_peryear[ct_lu[yr]]<min_n_comments ]
+		              ct_peryear[ct_lu_by_year[yr]]<min_n_comments ]
 
         # Make sure the early_years actually contains the first years in years, if
         # any. Otherwise the order that indices are written to file won't make any
@@ -561,7 +564,7 @@ class Parser(object):
 
         later_years=[ yr for yr in years_to_sample if yr not in early_years ]
 
-        # Record the number of indices sampled per year
+        # Record the number of indices sampled per month
         nixs=defaultdict(int)
 
         # Get a list of comment lengths, so we can filter by it
@@ -570,19 +573,22 @@ class Parser(object):
         with open(fout, 'w') as wfh:
             if len(early_years)>0:
                 fyear, lyear=early_years[0], early_years[-1]
-                start=ct_cumyear[ct_lu[fyear-1]] if fyear-1 in ct_lu else 0
-                end=ct_cumyear[ct_lu[lyear]]
+		if fyear-1 in ct_lu_by_year:
+                	start=ct_cumyear[ct_lu_by_year[fyear-1]]
+		else:
+			start=0
+                end=ct_cumyear[ct_lu_by_year[lyear]]
                 ixs_longenough=[ ix for ix in range(start, end) if lens[ix] >=
                                  min_comm_length ]
                 ixs=sorted(self._select_n(n, ixs_longenough))
                 for ix in ixs:
-                    nixs[years[[ ct>ix for ct in ct_cumyear ].index(True)]]+=1
+                    nixs[self.dates[[ ct>ix for ct in ct_cummonth ].index(True)]]+=1
                 assert sum(nixs.values())==len(ixs)
                 wfh.write('\n'.join(map(str, ixs)))
                 wfh.write('\n')
             for year in later_years:
-                start=ct_cumyear[ct_lu[year-1]]
-                end=ct_cumyear[ct_lu[year]]
+                start=ct_cumyear[ct_lu_by_year[year-1]]
+                end=ct_cumyear[ct_lu_by_year[year]]
                 ixs_longenough=[ ix for ix in range(start, end) if lens[ix] >=
                                  min_comm_length ]
                 ixs=sorted(self._select_n(n, ixs_longenough))
@@ -590,6 +596,13 @@ class Parser(object):
                 wfh.write('\n'.join(map(str, ixs)))
                 wfh.write('\n')
 
-        with open(fcounts, 'w') as wfh:
-            wfh.write('\n'.join('{} {}'.format(k, v) for k, v in
-                      sorted(nixs.iteritems(), key=lambda kv: kv[0])))
+	with open(fns["timedict_random"], "w") as tdfh:
+        	with open(fns["counts_random"], "w") as cfh:
+                	cumul_docs=0
+                        for date in self.dates:
+			    docs=nixs[date]
+                            month=self.format_date(*date)
+                            print(month+" "+str(docs), end='\n', file=tdfh)
+                            # Use timedict data to populate counts file
+                            cumul_docs+=docs
+                            print(cumul_docs, end='\n', file=cfh)

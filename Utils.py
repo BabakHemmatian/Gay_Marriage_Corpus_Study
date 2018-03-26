@@ -4,6 +4,7 @@ from subprocess import check_output
 import sys
 import time
 from config import *
+import parser
 
 def parse_colon_divided_text(txt):
     return dict(
@@ -59,42 +60,52 @@ def Write_Performance(output_path=output_path, NN=NN):
             print("Minimum term probability = " + str(minimum_phi_value),file=perf)
 
 ### calculate the yearly relevant comment counts
-def Yearly_Counts(path=path):
+def Get_Counts(path=path, random=False, frequency="monthly"):
+    assert frequency in ("monthly", "yearly")
+
+    fns=parser.Parser().get_parser_fns()
+    fn=fns["counts"] if not random else fns["counts_random"]
     # check for monthly relevant comment counts
-    if not Path(path+'/RC_Count_List').is_file():
+    if not Path(fn).is_file():
         raise Exception('The cummulative monthly counts could not be found')
 
     # load monthly relevant comment counts
-    with open(path+"/RC_Count_List",'r') as f:
+    with open(fn,'r') as f:
         timelist = []
         for line in f:
             if line.strip() != "":
                 timelist.append(int(line))
 
-    # calculate the cummulative yearly counts
     # intialize lists and counters
-    cumm_rel_year = [] # cummulative number of comments per year
-    relevant_year = [] # number of comments per year
+    cumulative = [] # cummulative number of comments per interval
+    per = [] # number of comments per interval
 
     month_counter = 0
 
     # iterate through monthly counts
     for index,number in enumerate(timelist): # for each month
         month_counter += 1 # update counter
+        if frequency=="monthly":
+            cumulative.append(number) # add the cummulative count
+            if index == 0: # for the first month
+                per.append(number) # append the cummulative value to number of comments per year
+            else: # for the other months, subtract the last two cummulative values to find the number of relevant comments in that year
+                per.append(number - cumulative[-2])
 
-        if month_counter == 12 or index == len(timelist) - 1: # if at the end of the year or the corpus
-            cumm_rel_year.append(number) # add the cummulative count
+        else:
+            if month_counter == 12 or index == len(timelist) - 1: # if at the end of the year or the corpus
+                cumulative.append(number) # add the cummulative count
 
-            if index + 1 == 12: # for the first year
-                relevant_year.append(number) # append the cummulative value to number of comments per year
-            else: # for the other years, subtract the last two cummulative values to find the number of relevant comments in that year
-                relevant_year.append(number - cumm_rel_year[-2])
-            month_counter = 0 # reset the counter at the end of the year
+                if index + 1 == 12: # for the first year
+                    per.append(number) # append the cummulative value to number of comments per year
+                else: # for the other years, subtract the last two cummulative values to find the number of relevant comments in that year
+                    per.append(number - cumulative[-2])
+                    month_counter = 0 # reset the counter at the end of the year
 
-    assert sum(relevant_year) == cumm_rel_year[-1]
-    assert cumm_rel_year[-1] == timelist[-1]
+    assert sum(per) == cumulative[-1]
+    assert cumulative[-1] == timelist[-1]
 
-    return relevant_year,cumm_rel_year
+    return per,cumulative
 
 def essentially_eq(a, b):
     return abs(a-b)<=1e-5

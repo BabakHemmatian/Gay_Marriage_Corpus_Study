@@ -5,7 +5,7 @@
 
 from __future__ import print_function
 from config import *
-from Parser import Parser
+from parser import Parser
 from ModelEstimation import NNModel
 
 ### set default file encoding
@@ -79,11 +79,11 @@ stop = set(nltk.corpus.stopwords.words('english'))
 
 ## NOTE: If NN = False, will pre-process data for LDA
 
-parser=Parser()
-parser.Parse_Rel_RC_Comments()
+theparser=Parser()
+theparser.Parse_Rel_RC_Comments()
 
 ### call the function for calculating the percentage of relevant comments
-parser.Perc_Rel_RC_Comment()
+theparser.Perc_Rel_RC_Comment()
 
 ### create training, development and test sets
 

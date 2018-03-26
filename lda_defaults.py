@@ -70,6 +70,8 @@ min_comm_length = 40 # the minimum acceptable number of words in a sampled
 # the topic of each word is set to the entire probability distribution over
 # num_topics topics.
 one_hot_topic_contributions=True
+# The frequency with which to calculate topic contribution
+topic_cont_freq="monthly"
 
 ### Paths
 
