@@ -12,7 +12,7 @@ from pathlib2 import Path
 from random import sample
 import time
 from config import *
-from Parser import Parser
+from parser import Parser
 parser_fns=Parser().get_parser_fns()
 from Utils import *
 
@@ -126,7 +126,7 @@ class ModelEstimator(object):
 
                 num_comm = len(human_ratings) # the number of valid samples for network training
                 indices = human_ratings # define sets over sampled comments with human ratings
-        
+
         else: # if using LDA on a random subsample of the comments
             num_comm = len(indices) # total number of sampled comments
 
@@ -309,21 +309,21 @@ class ModelEstimator(object):
                     self.Create_New_Sets(indices)
 
 class LDAModel(ModelEstimator):
-    def __init__(self, alpha=alpha, corpus=None, cumm_rel_year=None,
-                 dictionary=None, eta=eta, eval_comments=None,
-                 eval_word_count=None, fns=dict(), indexed_dataset=None,
-                 iterations=iterations, LDA_set_keys=[ 'train', 'eval' ],
-                 LDA_sets=None, ldamodel=None, min_comm_length=min_comm_length,
+    def __init__(self, alpha=alpha, corpus=None, dictionary=None, eta=eta,
+                 eval_comments=None, eval_word_count=None, fns=dict(),
+                 indexed_dataset=None, iterations=iterations,
+                 LDA_set_keys=[ 'train', 'eval' ], LDA_sets=None, ldamodel=None,
+                 min_comm_length=min_comm_length,
                  minimum_phi_value=minimum_phi_value,
                  minimum_probability=minimum_probability, no_above=no_above,
                  no_below=no_below, num_topics=num_topics,
-                 one_hot=one_hot_topic_contributions, relevant_year=None,
+                 one_hot=one_hot_topic_contributions,
                  sample_comments=sample_comments, sample_topics=sample_topics,
-                 stop=stop, train_word_count=None, **kwargs):
+                 stop=stop, topic_cont_freq=topic_cont_freq,
+                 train_word_count=None, **kwargs):
         ModelEstimator.__init__(self, **kwargs)
         self.alpha=alpha
         self.corpus=corpus
-        self.cumm_rel_year=cumm_rel_year
         self.dictionary=dictionary
         self.eta=eta
         self.eval_comments=eval_comments
@@ -342,10 +342,10 @@ class LDAModel(ModelEstimator):
         self.no_below=no_below
         self.num_topics=num_topics
         self.one_hot=one_hot
-        self.relevant_year=relevant_year
         self.sample_comments=sample_comments
         self.sample_topics=sample_topics
         self.stop=stop
+        self.topic_cont_freq=topic_cont_freq
         self.train_word_count=train_word_count
         self.fns=self.get_fns(**fns)
 
@@ -363,8 +363,13 @@ class LDAModel(ModelEstimator):
               "eval_word_count":"{}/eval_word_count_{}".format(self.path, self.all_),
               "model":"{}/RC_LDA_{}_{}.lda".format(self.path, self.num_topics, self.all_),
               "performance": "{}/Performance".format(self.output_path),
-              "topic_cont":"{}/yr_topic_cont_{}".format(self.output_path, "one-hot" if self.one_hot else "distributions"),
-              "theta":"{}/theta".format(self.output_path),
+              "topic_cont":"{}/yr_topic_cont_{}-{}-{}".format(self.output_path,
+                           "one-hot" if self.one_hot else "distributions",
+                           "all" if self.all_ else "subsample",
+                           self.topic_cont_freq),
+              "theta":"{}/theta_{}-{}-{}".format(self.output_path,
+                      "one-hot" if self.one_hot else "distributions",
+                      "all" if self.all_ else "subsample", self.topic_cont_freq),
               "sample_ratings": "{}/sample_ratings.csv".format(self.output_path),
               "sampled_comments":"{}/sampled_comments".format(self.output_path)
             }
@@ -556,8 +561,6 @@ class LDAModel(ModelEstimator):
         with open(self.fns["lda_prep"],'r') as f:
             indexed_dataset = [] # initialize the full dataset
 
-            year_counter = 0 # the first year in the corpus (2006)
-
             if not self.all_:
                 assert Path(self.fns["random_indices"]).is_file()
                 with open(self.fns["random_indices"]) as g:
@@ -566,12 +569,18 @@ class LDAModel(ModelEstimator):
                         if line.strip() != "":
                             rand_subsample.append(int(line))
 
+            per, cumulative=Get_Counts(frequency=self.topic_cont_freq)
+
+            # Only start the counter where counts are greater than 0
+            cumulative_as_arr=np.array(cumulative)
+            cumulative_mask=np.ma.masked_where(cumulative_as_arr>0, cumulative_as_arr).mask
+            counter=list(cumulative_mask).index(True)
             for comm_index,comment in enumerate(f): # for each comment
-                if comm_index >= self.cumm_rel_year[year_counter]:
-                    year_counter += 1 # update the year counter if need be
+                if comm_index >= cumulative[counter]:
+                    counter += 1 # update the year counter if need be
 
                 if self.all_ or (not self.all_ and comm_index in rand_subsample):
-                    indexed_dataset.append((comm_index,comment,year_counter)) # append the comment and the relevant year to the dataset
+                    indexed_dataset.append((comm_index,comment,counter)) # append the comment and the relevant year to the dataset
 
         return indexed_dataset
 
@@ -609,7 +618,7 @@ class LDAModel(ModelEstimator):
         if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
             dxt = (float(1) / float(analyzed_comment_length)) * dxt # normalize the topic contribution using comment length
 
-            Yearly_Running_Sums[indexed_comment[2]].Update_Val(dxt) # update the vector of yearly topic contributions
+            Running_Sums[indexed_comment[2]].Update_Val(dxt) # update the vector of topic contributions
 
         else: # if the model had no reasonable topic proposal for any of the words in the comment
             no_predictions[indexed_comment[2]].Increment() # update the no_predictions counter
@@ -624,22 +633,19 @@ class LDAModel(ModelEstimator):
             raise Exception('The preprocessed data could not be found')
 
         ## initialize shared vectors for yearly topic contributions
-        global Yearly_Running_Sums
-        Yearly_Running_Sums = {}
-        if self.all_:
-            no_years = len(self.cumm_rel_year)
-        # Get per-year and cumulative-by-year counts for randomly-sampled data,
-        # too
-        else:
-            relevant_year_for_subsample, cumm_rel_year_for_subsample=Yearly_Counts(random=True)
-            no_years=len(cumm_rel_year_for_subsample)
+        global Running_Sums
+        Running_Sums = {}
+
+        _, cumulative=Get_Counts(frequency=self.topic_cont_freq)
+        per, _=Get_Counts(random=not self.all_, frequency=self.topic_cont_freq)
+        no_intervals=len(cumulative)
 
         ## Create shared counters for comments for which the model has no reasonable prediction whatsoever
         global no_predictions
         no_predictions = {}
 
-        for i in range(no_years):
-            Yearly_Running_Sums[i] = Shared_Contribution_Array(self.num_topics)
+        for i in range(no_intervals):
+            Running_Sums[i] = Shared_Contribution_Array(self.num_topics)
             no_predictions[i] = Shared_Counter(initval=0)
 
         ## read and index comments
@@ -653,27 +659,25 @@ class LDAModel(ModelEstimator):
         pool.close()
         pool.join()
 
-        ## Gather yearly topic contribution estimates in one matrix
-        yearly_output = []
-        for i in range(no_years):
-            yearly_output.append(Yearly_Running_Sums[i].val[:])
+        ## Gather topic contribution estimates in one matrix
+        output = []
+        for i in range(no_intervals):
+            output.append(Running_Sums[i].val[:])
 
-        yearly_output = np.asarray(yearly_output)
+        output = np.asarray(output)
 
-        ## normalize contributions using the number of documents per year
-        if self.all_: # if processing all comments
-            for i in range(no_years): # for each year
-                yearly_output[i,:] = ( float(1) / (float(self.relevant_year[i]) - no_predictions[i].value )) * yearly_output[i,:]
-        else: # if processing a random subsample
-            for i in range(no_years):
-                yearly_output[i,:] = ( float(1) / (float(relevant_year_for_subsample[i]) - no_predictions[i].value )) * yearly_output[i,:]
+        for i in range(no_intervals):
+            if np.all(output[i,:]==0):
+                continue
+            output[i,:] = ( float(1) / (float(per[i]) - no_predictions[i].value )
+                          ) * output[i,:]
 
-        np.savetxt(self.fns["topic_cont"], yearly_output) # save the topic contribution matrix to file
+        np.savetxt(self.fns["topic_cont"], output) # save the topic contribution matrix to file
 
         # timer
         print("Finished calculating topic contributions at "+time.strftime('%l:%M%p'))
 
-        return yearly_output, indexed_dataset
+        return output, indexed_dataset
 
     ### Function that checks for a topic contribution matrix on file and calls for its calculation if there is none
     def Get_Topic_Contribution(self):
@@ -684,7 +688,7 @@ class LDAModel(ModelEstimator):
             np.savetxt(self.fns["topic_cont"], yr_topic_cont) # save the topic contribution matrix to file
 
             self.indexed_dataset=indexed_dataset
-            return yr_topic_cont
+            self.yr_topic_cont=yr_topic_cont
 
         else: # if there are records on file
             # ask if the contributions should be loaded or calculated again
@@ -726,47 +730,54 @@ class LDAModel(ModelEstimator):
         self.top_topics = avg_cont.argsort()[-top_topic_no:][::-1]
 
     ### Define a function for plotting the temporal trends in the top topics
-    def Plotter(self, report, yr_topic_cont, name):
+    def Plotter(self, name):
         plotter = []
-        for topic in report:
-            plotter.append(yr_topic_cont[:,topic].tolist())
+        for topic in self.top_topics:
+            plotter.append(self.yr_topic_cont[:,topic].tolist())
 
         plots = {}
-        for i in range(len(report.tolist())):
-            plots[i]= plt.plot(range(1,len(plotter[0])+1),plotter[i],label='Topic '+str(report[i]))
+        for i in range(len(self.top_topics.tolist())):
+            plots[i]= plt.plot(range(1,len(plotter[0])+1),plotter[i],
+                               label='Topic '+str(self.top_topics[i]))
         plt.legend(loc='best')
-        plt.xlabel('Year (2006-'+str(2006+len(plotter[0])-1)+')')
+        plt.xlabel('{}/{}-{}/{}'.format(dates[0][1], dates[0][0], dates[-1][1],
+                                        dates[-1][0]))
         plt.ylabel('Topic Probability')
-        plt.title('Contribution of the top topics to the LDA model for 2006-'+str(2006+len(plotter[0])-1))
+        plt.title('Contribution of the top topics to the LDA model for {}/{}-{}/{}'.format(
+                  dates[0][1], dates[0][0], dates[-1][1], dates[-1][0]))
         plt.grid(True)
         plt.savefig(name)
         plt.show()
 
     ### Function for multi-core processing of comment-top topic probabilities
     ### IDEA: Add functionality for choosing a certain year (or interval) for which we ask the program to sample comments. Should be simple (indexed_dataset[2])
-    def Top_Topics_Theta_Multicore(self, report):
+    def Top_Topics_Theta_Multicore(self):
         # timer
         print("Started calculating theta at " + time.strftime('%l:%M%p'))
 
         ## filter dataset comments based on length and create a BOW for each comment
         dataset = [] # initialize dataset
 
-        for document in self.indexed_dataset: # for each comment in the indexed_dataset
-            if self.min_comm_length == None: # if not filtering based on comment length
-                # add a tuple including comment index, bag of words representation and relevant year to the dataset
+        for document in self.indexed_dataset: # for each comment in the
+            # indexed_dataset
+            if self.min_comm_length == None: # if not filtering based on comment
+                # length add a tuple including comment index, bag of words
+                # representation and relevant time interval to the dataset
                 dataset.append((document[0],
                     self.dictionary.doc2bow(document[1].strip().split()),
                     document[2]))
 
             else: # if filtering based on comment length
-                if len(document[1].strip().split()) > self.min_comm_length: # filter out short comments
-                    # add a tuple including comment index, bag of words representation and relevant year to the dataset
+                if len(document[1].strip().split()) > self.min_comm_length:
+                    # filter out short comments
+                    # add a tuple including comment index, bag of words
+                    # representation and relevant time interval to the dataset
                     dataset.append((document[0],
                         self.dictionary.doc2bow(document[1].strip().split()),
                         document[2]))
 
         ## call the multiprocessing function on the dataset
-        theta_with_none = theta_func(dataset, self.ldamodel, report)
+        theta_with_none = theta_func(dataset, self.ldamodel, self.top_topics)
 
         ## flatten the list and get rid of 'None's
         theta = []
@@ -778,10 +789,10 @@ class LDAModel(ModelEstimator):
         return theta
 
     ### Function that calls for calculating, re-calculating or loading theta estimations for top topics
-    def Get_Top_Topic_Theta(self, report):
+    def Get_Top_Topic_Theta(self):
         # check to see if theta for top topics has already been calculated
         if not Path(self.fns["theta"]).is_file(): # if not
-            theta = self.Top_Topics_Theta_Multicore(report) # calculate theta
+            theta = self.Top_Topics_Theta_Multicore() # calculate theta
 
             # save theta to file
             with open(self.fns["theta"],'a+') as f:
@@ -797,7 +808,7 @@ class LDAModel(ModelEstimator):
             if Q == 'Y' or Q == 'y': # re-calculate
                 os.remove(self.fns["theta"]) # delete the old records
 
-                theta = self.Top_Topics_Theta_Multicore(report) # calculate theta
+                theta = self.Top_Topics_Theta_Multicore() # calculate theta
 
                 # save theta to file
                 with open(self.fns["theta"],'a+') as f:
@@ -818,12 +829,12 @@ class LDAModel(ModelEstimator):
                 print("Operation aborted. Please note that loaded theta is required for sampling top comments.")
 
     ### Defines a function for finding the [sample_comments] most representative length-filtered comments for each top topic
-    def Top_Comment_Indices(self, report):
+    def Top_Comment_Indices(self):
         top_topic_probs = {} # initialize a dictionary for all top comment indices
         sampled_indices = {} # initialize a dictionary for storing sampled comment indices
         sampled_probs = {} # initialize a list for storing top topic contribution to sampled comments
 
-        for topic in report: # for each top topic
+        for topic in self.top_topics: # for each top topic
             # find all comments with significant contribution from that topic
             top_topic_probs[topic] = [element for element in self.theta if
                                       element[1] == topic]
@@ -840,12 +851,14 @@ class LDAModel(ModelEstimator):
 
     ### retrieve the original text of sampled comments and write them to file along with the relevant topic ID
     # IDEA: Should add the possibility of sampling from specific year(s)
-    def Get_Top_Comments(self, report):
+    def Get_Top_Comments(self):
         # timer
         print("Started sampling top comments at " + time.strftime('%l:%M%p'))
 
         # find the top comments associated with each top topic
-        sampled_indices,sampled_probs = self.Top_Comment_Indices(report)
+        sampled_indices,sampled_probs = self.Top_Comment_Indices()
+
+        per, cumulative=Get_Counts(frequency="yearly")
 
         if not Path(self.fns["original_comm"]).is_file(): # if the original relevant comments are not already available on disk, read them from the original compressed files
             # json parser
@@ -896,7 +909,7 @@ class LDAModel(ModelEstimator):
                                 counter += 1 # update the counter
 
                                 # update year counter if need be
-                                if counter-1 >= self.cumm_rel_year[year_counter]:
+                                if counter-1 >= cumulative[year_counter]:
                                     year_counter += 1
 
                                 for topic,indices in sampled_indices.iteritems():
@@ -951,7 +964,7 @@ class LDAModel(ModelEstimator):
                     for topic,indices in sampled_indices.iteritems():
                         if comm_index in indices:
                             # update the year counter if need be
-                            if comm_index >= self.cumm_rel_year[year_counter]:
+                            if comm_index >= cumulative[year_counter]:
                                 year_counter += 1
 
                             # update the sample counter
