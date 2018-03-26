@@ -486,7 +486,7 @@ class Parser(object):
             else:
                 total_year[str(keys[3:7])] = d[keys]
 
-        relevant_year, _ = Yearly_Counts(self.path)
+        relevant_year, _ = Get_Counts(self.path, frequency="yearly")
         relevant = {}
         for idx,year in enumerate(relevant_year):
             relevant[str(2006+idx)] = year
@@ -538,7 +538,7 @@ class Parser(object):
     def select_random_comments(self, n=n_random_comments,
                                years_to_sample=years, min_n_comments=5000,
                                overwrite=OVERWRITE):
-	fns=self.get_parser_fns()
+        fns=self.get_parser_fns()
         fout=fns["indices_random"]
 
         if ( not overwrite and os.path.exists(fout) ):
@@ -546,13 +546,13 @@ class Parser(object):
             return
 
         years_to_sample=sorted(years_to_sample)
-	ct_peryear, ct_cumyear=Yearly_Counts(self.path)
-        ct_permonth, ct_cummonth=Monthly_Counts(self.path)
-	assert len(self.dates)==len(ct_permonth)==len(ct_cummonth)
-	ct_lu_by_year=dict((y, i) for i, y in enumerate(years))
+        ct_peryear, ct_cumyear=Get_Counts(path=self.path, frequency="yearly")
+        ct_permonth, ct_cummonth=Get_Counts(path=self.path, frequency="monthly")
+        assert len(self.dates)==len(ct_permonth)==len(ct_cummonth)
+        ct_lu_by_year=dict((y, i) for i, y in enumerate(years))
         ct_lu_by_month=dict(zip(self.dates, range(len(self.dates))))
-        early_years=[ yr for yr in years_to_sample if 
-		      ct_peryear[ct_lu_by_year[yr]]<min_n_comments ]
+        early_years=[ yr for yr in years_to_sample if
+		              ct_peryear[ct_lu_by_year[yr]]<min_n_comments ]
 
         # Make sure the early_years actually contains the first years in years, if
         # any. Otherwise the order that indices are written to file won't make any
