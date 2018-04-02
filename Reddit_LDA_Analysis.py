@@ -7,7 +7,7 @@ from math import ceil
 import numpy as np
 from config import *
 from ModelEstimation import LDAModel
-from parser import Parser
+from reddit_parser import Parser
 from Utils import *
 
 ### set default file encoding

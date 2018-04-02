@@ -4,7 +4,7 @@ from subprocess import check_output
 import sys
 import time
 from config import *
-import parser
+import reddit_parser
 
 def parse_colon_divided_text(txt):
     return dict(
@@ -63,7 +63,7 @@ def Write_Performance(output_path=output_path, NN=NN):
 def Get_Counts(path=path, random=False, frequency="monthly"):
     assert frequency in ("monthly", "yearly")
 
-    fns=parser.Parser().get_parser_fns()
+    fns=reddit_parser.Parser().get_parser_fns()
     fn=fns["counts"] if not random else fns["counts_random"]
     # check for monthly relevant comment counts
     if not Path(fn).is_file():

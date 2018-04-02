@@ -5,7 +5,7 @@
 
 from __future__ import print_function
 from config import *
-from parser import Parser
+from reddit_parser import Parser
 from ModelEstimation import NNModel
 
 ### set default file encoding

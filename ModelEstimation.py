@@ -12,7 +12,7 @@ from pathlib2 import Path
 from random import sample
 import time
 from config import *
-from parser import Parser
+from reddit_parser import Parser
 parser_fns=Parser().get_parser_fns()
 from Utils import *
 
