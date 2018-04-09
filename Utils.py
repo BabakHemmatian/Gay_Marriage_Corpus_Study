@@ -108,4 +108,4 @@ def Get_Counts(path=path, random=False, frequency="monthly"):
     return per,cumulative
 
 def essentially_eq(a, b):
-    return abs(a-b)<=1e-5
+    return abs(a-b)<=1e-4
