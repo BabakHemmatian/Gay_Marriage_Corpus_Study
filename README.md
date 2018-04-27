@@ -1,14 +1,16 @@
 # Same-Sex Marriage Reddit Study
 
 ### Collaborators: 
-### Babak Hemmatian, Steven A. Sloman, Uriel Cohen-Priva
+### Babak Hemmatian
 #### Brown University, Department of Cognitive, Linguistic and Psychological Sciences
 ### Sabina J. Sloman
 #### Carnegie Mellon University, Department of Social and Decision Sciences
+### Steven A. Sloman, Uriel Cohen-Priva
+#### Brown University, Department of Cognitive, Linguistic and Psychological Sciences
 
 ### Outline
 
-This repository holds Python code that can be used to extract information about trends in Reddit comments that relate to same-sex marriage over the years. Trivial changes to filters in [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py) can make it possible to use the code for extracting and analyzing comments related to any topic. 
+This repository holds Python code that can be used to extract information about trends in Reddit comments that relate to same-sex marriage over the years. Trivial changes to filter at the end of [lda_defaults.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_defaults.py) can make it possible to use the code for extracting and analyzing comments related to any topic. 
 
 ### Dataset
 
@@ -16,12 +18,12 @@ The code is written to work with [a pre-existing corpus composed of all posts on
 
 ### Topic Modeling
 
-You can use Latent Dirichlet Allocation (LDA) to create and examine topic models of the corpus via [Reddit_LDA_Analysis.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Reddit_LDA_Analysis.py). Default hyperparameters for the model to be trained can be set using [lda_defaults.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_defaults.py), and can be overridden by assigning the desired value in [lda_config.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_config.py). Functions for determining top topics via contribution to contextual word-topic assignments, sampling top comments associated with each topic that pass certain criteria, and temporal trends are included. Human ratings can be added to the CSV file that results from comment sampling to use ratings of top comments for training a regression neural network using the relevant module in the current repository. This file should be in the same directory as [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py). 
+You can use Latent Dirichlet Allocation (LDA) to create and examine topic models of the corpus via [Reddit_LDA_Analysis.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Reddit_LDA_Analysis.py). Default hyperparameters for the model to be trained can be set using [lda_defaults.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_defaults.py), and can be overridden by assigning the desired value in [lda_config.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_config.py). Functions for determining top topics via contribution to contextual word-topic assignments, sampling top comments associated with each topic that pass certain criteria, and temporal trends are included. Human ratings can be added to the CSV file that results from comment sampling to use ratings of top comments for training a regression neural network using the relevant module in the current repository. Unless the default path variable is changed, this file should be in the same directory as [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py). 
 
-### Recurrent Neural Networks
+### Recurrent Neural Networks (in progress)
 
 You can set hyperparameters and call functions to create recurrent Neural Network (NN) models of the corpus using [Combined_NN_Model.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Combined_NN_Model.py). Based on the hyperparameters, this code can be used to create a language model of the corpus (trained on predicting the upcoming word in a given comment), or a comment classifier. The language model can be used as pre-training for the classifier if training data is scarce. The current default version of the code predicts the sign of each comment's upvotes (negative, neutral, positive). This file also needs to be in the same directory as [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py). A separate neural network for regression over human interval ratings of comments will be added to the repository.
 
 ### Facebook Comments
 
-The collaborators plan to extend this project by including comments from major news outlets on Facebook. The [Facebook](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Facebook) folder holds the unfinished code for scraping and analyzing Facebook comments. [Old_Code](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Old_Code) also includes unfinished code that is archived only for the use of the collaborators.
+The collaborators plan to extend this project by including comments from major news outlets on Facebook. The [Facebook](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Facebook) folder holds the unfinished code for scraping and analyzing Facebook comments. [Old_Code](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Old_Code) also includes unfinished code that is archived for the internal use of the collaborators.
