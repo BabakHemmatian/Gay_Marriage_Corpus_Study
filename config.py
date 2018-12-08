@@ -1,5 +1,6 @@
 from lda_defaults import *
 from lda_config import *
+from ratings_config import *
 
 # ENTIRE_CORPUS should be True if NN is True
 if NN:
