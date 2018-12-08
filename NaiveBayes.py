@@ -95,10 +95,15 @@ class Model(object):
         return nright / n, nindifferent / len(test_data_)
 
 def kfold(args):
-    k, dat = args
+    k, dat, seed = args
+    # I'm not sure if every new spawned process uses the same seed, so force
+    # them to use different seeds just in case
+    np.random.seed(seed)
 
     accuracy = []
-    folds = np.array_split(dat.index, k)
+    ixs = dat.index.values
+    np.random.shuffle(ixs)
+    folds = np.array_split(ixs, k)
     for fold in folds:
         training_data = dat.loc[[ix for ix in dat.index if ix not in fold]]
         test_data = dat.loc[fold]
@@ -111,5 +116,6 @@ def kfold(args):
 def repeat_kfold(n = 10, k = 10, n_cpus = mp.cpu_count() - 1):
     dat = pickle.load(open(ALL_FN, "rb"))
     pool = mp.Pool(n_cpus)
-    accuracy = pool.map(kfold, [(k, dat)] * n)
+    seeds = np.random.randint(1000, size = n)
+    accuracy = pool.map(kfold, [(k, dat, seed) for seed in seeds])
     return np.mean(accuracy)
