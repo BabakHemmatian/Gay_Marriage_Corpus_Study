@@ -3,6 +3,7 @@ from __future__ import division
 """
 
 from collections import defaultdict
+import matplotlib.pyplot as plt
 import multiprocessing as mp
 import numpy as np
 import os
@@ -161,7 +162,8 @@ def get_per_word_wght():
             kwds[f_] += w
     return kwds
 
-def DEPR_get_temporal_trends():
+# Deprecated
+def _get_temporal_trends_by_keywords():
     cons_words = [ w for w in open("words-cons", "r").read().split("\n") if
                    w.strip() ]
     vb_words = [ w for w in open("words-vb", "r").read().split("\n") if
@@ -215,17 +217,8 @@ def get_temporal_trends(save = True):
     ixs = list(map(int, [ l for l in
                           open("RC_Count_List", "r").read().split("\n") if
                           l.strip() ]))
-    # Memory errors
-    #scores = np.array([0] * 100 * (len(ixs)-1))
-    #scores = scores.reshape(((len(ixs)-1), 100))
-    #frac_cons = np.array([0] * 100 * (len(ixs)-1))
-    #frac_cons = frac_cons.reshape(((len(ixs)-1), 100))
-    #frac_vb = np.array([0] * 100 * (len(ixs)-1))
-    #frac_vb = frac_vb.reshape(((len(ixs)-1), 100))
-
     wfs, ffs = get_saved_model_params()
     for i, (wf, ff) in enumerate(zip(wfs, ffs)):
-        ##
         id_ = wf.split("-")[-1]
         print ("Sample #" + str(i+1))
         wghts = np.array(list(map(float, open(wf, "r").read().split())))
@@ -233,20 +226,62 @@ def get_temporal_trends(save = True):
         comments_ = [ comments[ixs[i_-1]:ixs[i_]] for i_ in range(1, len(ixs)) ]
         scores_ = mp.Pool(mp.cpu_count() - 1).map(get_data_for_one_month,
                                                   [ (comments__, wghts, features
-                                                    ) for comments__ in 
+                                                    ) for comments__ in
                                                     comments_ ])
         scores_ = np.array(scores_)
-        #scores[:,i] = scores_[:,0]
-        #frac_cons[:,i] = scores_[:,1]
-        #frac_vb[:,i] = scores_[:,2]
 
-        ##
         if save:
             with open("scores" + id_, "wb") as wfh:
                 pickle.dump(scores_, wfh)
-            #with open("frac_cons" + id_, "wb") as wfh:
-            #    pickle.dump(frac_cons, wfh)
-            #with open("frac_vb" + id_, "wb") as wfh:
-            #    pickle.dump(frac_vb, wfh)
 
-    #return scores, frac_cons, frac_vb
+def plot_trends(ids):
+    # cat RC_Count_List | wc -l
+    scores = np.empty(((140, len(ids))))
+    frac_cons = np.empty(((140, len(ids))))
+    frac_vb = np.empty(((140, len(ids))))
+
+    for i, id_ in enumerate(ids):
+        scores_ = pickle.load(open("scores" + id_, "rb"))
+        scores[:,i] = scores_[:,0]
+        frac_cons[:,i] = scores_[:,1]
+        frac_vb[:,i] = scores_[:,2]
+
+    scores = np.sort(scores[1:,:], axis = 1)
+    frac_cons = np.sort(frac_cons[1:,:], axis = 1)
+    frac_vb = np.sort(frac_vb[1:,:], axis = 1)
+
+    xticks = range(scores.shape[0])
+    xticklabels = [ mo + yr for yr in [ "2006", "2007", "2008", "2009", "2010",
+                    "2011", "2012", "2013", "2014", "2015", "2016", "2017" ] for
+                    mo in [ "01/", "02/", "03/", "04/", "05/", "06/", "07/",
+                    "08/", "09/", "10/", "11/", "12/" ] ]
+    xticklabels = xticklabels[2:]
+
+    # Plot scores
+    ax = plt.subplot(111)
+    scores_mu = [ np.mean(score) for score in scores ]
+    scores_lb = [ score[int(.025 * len(score))] for score in scores ]
+    scores_ub = [ score[int(.975 * len(score))] for score in scores ]
+    ax.plot(xticks, scores_mu)
+    ax.set_xticks(xticks[::10])
+    ax.set_xticklabels(xticklabels[::10], rotation = 90)
+    ax.fill_between(xticks, scores_lb, scores_ub, alpha = .5)
+    plt.tight_layout()
+    plt.show()
+
+    # Plot frac_cons and frac_vb
+    ax = plt.subplot(111)
+    frac_cons_mu = [ np.mean(fc) for fc in frac_cons ]
+    frac_cons_lb = [ fc[int(.025 * len(fc))] for fc in frac_cons ]
+    frac_cons_ub = [ fc[int(.975 * len(fc))] for fc in frac_cons ]
+    ax.plot(xticks, frac_cons_mu, color = "blue")
+    ax.set_xticks(xticks[::10])
+    ax.set_xticklabels(xticklabels[::10], rotation = 90)
+    ax.fill_between(xticks, frac_cons_lb, frac_cons_ub, color = "blue")
+    frac_vb_mu = [ np.mean(fv) for fv in frac_vb ]
+    frac_vb_lb = [ fv[int(.025 * len(fv))] for fv in frac_vb ]
+    frac_vb_ub = [ fv[int(.975 * len(fv))] for fv in frac_vb ]
+    ax.plot(xticks, frac_vb_mu, color = "red")
+    ax.fill_between(xticks, frac_vb_lb, frac_vb_ub, color = "red")
+    plt.tight_layout()
+    plt.show()
