@@ -217,7 +217,6 @@ def get_temporal_trends(save = True):
     ixs = list(map(int, [ l for l in
                           open("RC_Count_List", "r").read().split("\n") if
                           l.strip() ]))
-
     wfs, ffs = get_saved_model_params()
     for i, (wf, ff) in enumerate(zip(wfs, ffs)):
         id_ = wf.split("-")[-1]
