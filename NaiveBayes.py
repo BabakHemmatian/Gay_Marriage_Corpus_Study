@@ -237,9 +237,9 @@ def get_temporal_trends(save = True):
 
 def plot_trends(ids):
     # cat RC_Count_List | wc -l
-    scores = np.empty(((140, len(ids))))
-    frac_cons = np.empty(((140, len(ids))))
-    frac_vb = np.empty(((140, len(ids))))
+    scores = np.empty((140, len(ids)))
+    frac_cons = np.empty((140, len(ids)))
+    frac_vb = np.empty((140, len(ids)))
 
     for i, id_ in enumerate(ids):
         scores_ = pickle.load(open("scores" + id_, "rb"))
@@ -247,16 +247,17 @@ def plot_trends(ids):
         frac_cons[:,i] = scores_[:,1]
         frac_vb[:,i] = scores_[:,2]
 
-    scores = np.sort(scores[1:,:], axis = 1)
-    frac_cons = np.sort(frac_cons[1:,:], axis = 1)
-    frac_vb = np.sort(frac_vb[1:,:], axis = 1)
+    # Only use data from 2008 on
+    scores = np.sort(scores[23:,:], axis = 1)
+    assert scores.shape == (117, len(ids))
+    frac_cons = np.sort(frac_cons[23:,:], axis = 1)
+    assert frac_cons.shape == (117, len(ids))
+    frac_vb = np.sort(frac_vb[23:,:], axis = 1)
+    assert frac_vb.shape == (117, len(ids))
 
     xticks = range(scores.shape[0])
-    xticklabels = [ mo + yr for yr in [ "2006", "2007", "2008", "2009", "2010",
-                    "2011", "2012", "2013", "2014", "2015", "2016", "2017" ] for
-                    mo in [ "01/", "02/", "03/", "04/", "05/", "06/", "07/",
-                    "08/", "09/", "10/", "11/", "12/" ] ]
-    xticklabels = xticklabels[2:]
+    xticklabels = [ "2008", "2009", "2010", "2011", "2012", "2013", "2014",
+                    "2015", "2016", "2017" ]
 
     # Plot scores
     ax = plt.subplot(111)
@@ -264,9 +265,17 @@ def plot_trends(ids):
     scores_lb = [ score[int(.025 * len(score))] for score in scores ]
     scores_ub = [ score[int(.975 * len(score))] for score in scores ]
     ax.plot(xticks, scores_mu)
-    ax.set_xticks(xticks[::10])
-    ax.set_xticklabels(xticklabels[::10], rotation = 90)
+    ax.set_xticks(xticks[::12])
+    ax.set_xticklabels(xticklabels, rotation = 90)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("""Log odds of observed discourse under the
+assumption of a consequentialist frame""")
     ax.fill_between(xticks, scores_lb, scores_ub, alpha = .5)
+    # Index May 2012 and June 2015
+    ylim = ax.get_ylim()
+    ax.set_ylim(ylim)
+    ax.plot((52, 52), ylim, "k")
+    ax.plot((89, 89), ylim, "k")
     plt.tight_layout()
     plt.show()
 
@@ -275,14 +284,24 @@ def plot_trends(ids):
     frac_cons_mu = [ np.mean(fc) for fc in frac_cons ]
     frac_cons_lb = [ fc[int(.025 * len(fc))] for fc in frac_cons ]
     frac_cons_ub = [ fc[int(.975 * len(fc))] for fc in frac_cons ]
-    ax.plot(xticks, frac_cons_mu, color = "blue")
-    ax.set_xticks(xticks[::10])
-    ax.set_xticklabels(xticklabels[::10], rotation = 90)
-    ax.fill_between(xticks, frac_cons_lb, frac_cons_ub, color = "blue")
+    ax.plot(xticks, frac_cons_mu, color = "blue", label = "Consequentialist")
+    ax.set_xticks(xticks[::12])
+    ax.set_xticklabels(xticklabels, rotation = 90)
+    ax.set_xlabel("Time")
+    ax.set_ylabel("""Fraction of comments classified as a member of each
+discourse category""")
+    ax.fill_between(xticks, frac_cons_lb, frac_cons_ub, color = "blue",
+                    alpha = .5)
     frac_vb_mu = [ np.mean(fv) for fv in frac_vb ]
     frac_vb_lb = [ fv[int(.025 * len(fv))] for fv in frac_vb ]
     frac_vb_ub = [ fv[int(.975 * len(fv))] for fv in frac_vb ]
-    ax.plot(xticks, frac_vb_mu, color = "red")
-    ax.fill_between(xticks, frac_vb_lb, frac_vb_ub, color = "red")
+    ax.plot(xticks, frac_vb_mu, color = "red", label = "Protected-values-based")
+    ax.legend()
+    ax.fill_between(xticks, frac_vb_lb, frac_vb_ub, color = "red", alpha = .5)
+    # Index May 2012 and June 2015
+    ylim = (0, 1)
+    ax.set_ylim(ylim)
+    ax.plot((52, 52), ylim, "k")
+    ax.plot((89, 89), ylim, "k")
     plt.tight_layout()
     plt.show()
