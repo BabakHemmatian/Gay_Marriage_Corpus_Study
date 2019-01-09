@@ -3,6 +3,7 @@ from __future__ import division
 """
 
 from collections import defaultdict
+from itertools import chain
 import matplotlib.pyplot as plt
 import multiprocessing as mp
 import numpy as np
@@ -73,11 +74,16 @@ class Model(object):
             with open("features-" + self.id_, "w") as wfh:
                 wfh.write(" ".join(self.features))
 
-    def _get_score(self, text, process = True):
+    def _get_score(self, text, process = True, level = "comment"):
+        assert level in ("word", "comment")
         if process:
             text = self.parser.LDA_clean(text)
             text = np.array(text.split())
-        text = text[np.in1d(text, self.features)]
+	if level == "word":
+            if text[0] not in self.features:
+                return 0
+        else:
+            text = text[np.in1d(text, self.features)]
         ixs = [ np.where(self.features == word)[0][0] for word in text ]
         score = np.sum(self.wghts[ixs])
         return score
@@ -194,13 +200,14 @@ def _get_temporal_trends_by_keywords():
     return frac_cons, frac_vb
 
 def get_data_for_one_month(args):
-    comments, wghts, features = args
+    comments, wghts, features, level = args
     mod = Model(throwaway = True)
     mod.wghts = wghts
     mod.features = features
     n = len(comments)
     all_scores = np.array(map(lambda comment: mod._categorize_comment(comment,
-                                                                      process = False),
+                                                                      process = False,
+                                                                      level = level),
                           comments))
     if n > 0:
         scores_ = np.array([sum(all_scores[:,1]),
@@ -210,7 +217,8 @@ def get_data_for_one_month(args):
         scores_ = np.array([np.nan, np.nan, np.nan])
     return scores_
 
-def get_temporal_trends(save = True):
+def get_temporal_trends(save = True, level = "word"):
+    assert level in ("word", "comment")
     comments = [ l for l in open("lda_prep", "r").read().split("\n") if
                  l.strip() ]
     comments = [ np.array(comment.split()) for comment in comments ]
@@ -223,11 +231,21 @@ def get_temporal_trends(save = True):
         print ("Sample #" + str(i+1))
         wghts = np.array(list(map(float, open(wf, "r").read().split())))
         features = np.array(open(ff, "r").read().split())
-        comments_ = [ comments[ixs[i_-1]:ixs[i_]] for i_ in range(1, len(ixs)) ]
-        scores_ = mp.Pool(mp.cpu_count() - 1).map(get_data_for_one_month,
-                                                  [ (comments__, wghts, features
-                                                    ) for comments__ in
-                                                    comments_ ])
+        if level == "word":
+            comments_ = [ list(chain(*comments[ixs[i_-1]:ixs[i_]])) for i_ 
+                          in range(1, len(ixs)) ]
+            f = lambda c: [c]
+            comments_ = [ map(f, comment) for comment in comments_ ]
+        else:
+            comments_ = [ comments[ixs[i_-1]:ixs[i_]] for i_ in 
+                          range(1, len(ixs)) ]
+        pool = mp.Pool(mp.cpu_count() - 1)
+        scores_ = pool.map(get_data_for_one_month, [ (comments__, wghts, 
+                                                      features, level) 
+                                                     for comments__ in 
+                                                     comments_ ])
+        pool.close()
+        pool.join()
         scores_ = np.array(scores_)
 
         if save:
@@ -241,7 +259,8 @@ def plot_trends(ids):
     frac_vb = np.empty((140, len(ids)))
 
     for i, id_ in enumerate(ids):
-        scores_ = pickle.load(open("scores" + id_, "rb"))
+        #scores_ = pickle.load(open("scores" + id_, "rb"))
+        scores_ = pickle.load(open("word-level/scores" + id_, "rb"))
         scores[:,i] = scores_[:,0]
         frac_cons[:,i] = scores_[:,1]
         frac_vb[:,i] = scores_[:,2]
@@ -287,7 +306,8 @@ assumption of a consequentialist frame""")
     ax.set_xticks(xticks[::12])
     ax.set_xticklabels(xticklabels, rotation = 90)
     ax.set_xlabel("Time")
-    ax.set_ylabel("""Fraction of comments classified as a member of each
+    #ax.set_ylabel("""Fraction of comments classified as a member of each
+    ax.set_ylabel("""Fraction of words classified as a member of each
 discourse category""")
     ax.fill_between(xticks, frac_cons_lb, frac_cons_ub, color = "blue",
                     alpha = .5)
