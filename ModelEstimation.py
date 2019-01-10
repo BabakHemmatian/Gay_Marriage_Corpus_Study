@@ -2,8 +2,10 @@ from __future__ import print_function
 from collections import defaultdict, OrderedDict
 import csv
 from functools import partial
+import operator
 import numpy as np
 import gensim
+import pickle
 from math import ceil, floor
 import matplotlib.pyplot as plt
 import multiprocessing
@@ -12,13 +14,15 @@ from pathlib2 import Path
 from random import sample
 import time
 from config import *
-from reddit_parser import Parser
+from parser import Parser
 parser_fns=Parser().get_parser_fns()
 from Utils import *
 
+## wrapper function for calculating topic contributions to a comment
 def Topic_Asgmt_Retriever_Multi_wrapper(args):
     indexed_comment, kwargs=args
-    LDAModel(**kwargs).Topic_Asgmt_Retriever_Multi(indexed_comment)
+    data_for_R = LDAModel(**kwargs).Topic_Asgmt_Retriever_Multi(indexed_comment)
+    return data_for_R
 
 ## define the function for spawning processes to perform the calculations in parallel
 def theta_func(dataset, ldamodel, report):
@@ -119,10 +123,10 @@ class ModelEstimator(object):
                     for idx,row in enumerate(reader):
                         row = row[0].split(",")
                         # ignore headers and record the index of comments that are interpretable and that have ratings for all three goal variables
-                        if ( idx != 0 and (row[7] != 'N' or row[7] != 'n') and
-                             row[4].isdigit() and row[5].isdigit() and
-                             row[6].isdigit() ):
-                            human_ratings.append(int(row[1]))
+                        if ( idx != 0 and (row[5] != 'N' or row[5] != 'n') and
+                             row[2].isdigit() and row[3].isdigit() and
+                             row[4].isdigit() ):
+                            human_ratings.append(int(row[0]))
 
                 num_comm = len(human_ratings) # the number of valid samples for network training
                 indices = human_ratings # define sets over sampled comments with human ratings
@@ -319,8 +323,9 @@ class LDAModel(ModelEstimator):
                  no_below=no_below, num_topics=num_topics,
                  one_hot=one_hot_topic_contributions,
                  sample_comments=sample_comments, sample_topics=sample_topics,
-                 stop=stop, topic_cont_freq=topic_cont_freq,
-                 train_word_count=None, **kwargs):
+                 top_topic_thresh=top_topic_thresh, top_topic_set=top_topic_set, stop=stop,
+                 topic_cont_freq=topic_cont_freq, train_word_count=None,
+                 **kwargs):
         ModelEstimator.__init__(self, **kwargs)
         self.alpha=alpha
         self.corpus=corpus
@@ -344,6 +349,7 @@ class LDAModel(ModelEstimator):
         self.one_hot=one_hot
         self.sample_comments=sample_comments
         self.sample_topics=sample_topics
+        self.top_topic_thresh=top_topic_thresh
         self.stop=stop
         self.topic_cont_freq=topic_cont_freq
         self.train_word_count=train_word_count
@@ -370,8 +376,14 @@ class LDAModel(ModelEstimator):
               "theta":"{}/theta_{}-{}-{}".format(self.output_path,
                       "one-hot" if self.one_hot else "distributions",
                       "all" if self.all_ else "subsample", self.topic_cont_freq),
+              "sample_keys": "{}/sample_keys.csv".format(self.output_path),
               "sample_ratings": "{}/sample_ratings.csv".format(self.output_path),
-              "sampled_comments":"{}/sampled_comments".format(self.output_path)
+              "sampled_comments":"{}/sampled_comments".format(self.output_path),
+              "popular_comments":"{}/popular_comments.csv".format(self.output_path),
+              "original_comm":"{}/original_comm".format(self.path),
+              "counts":"{}/RC_Count_List".format(self.path),
+              "votes":"{}/votes".format(self.path),
+              "data_for_R":"{}/data_for_R.csv".format(self.output_path)
             }
         for k, v in kwargs.items():
             fns[k]=v
@@ -556,6 +568,24 @@ class LDAModel(ModelEstimator):
 
         return train_per_word_perplex,eval_per_word_perplex
 
+    ### Get umass coherence values for the LDA model based on training and development sets
+    def Get_Coherence(self):
+        # timer
+        print("Started calculating coherence at "+time.strftime('%l:%M%p'))
+
+        ## calculate model coherence for training set
+        umass = gensim.models.coherencemodel.CoherenceModel
+        train_coherence = umass(model=self.ldamodel, corpus=self.corpus, coherence='u_mass')
+        umass_train_value = train_coherence.get_coherence()
+
+        ## Print and save coherence values to file
+        with open(self.fns["performance"],'a+') as perf:
+            print("*** Coherence ***",file=perf)
+            print("Umass coherence (using "+str(self.training_fraction)+" percent of documents as training set): "+str(umass_train_value))
+            print("Umass coherence (using "+str(self.training_fraction)+" percent of documents as training set): "+str(umass_train_value),file=perf)
+
+        return umass_train_value
+
     ### function for creating an enhanced version of the dataset with year and comment indices (used in topic contribution and theta calculation)
     def Get_Indexed_Dataset(self):
         with open(self.fns["lda_prep"],'r') as f:
@@ -577,19 +607,30 @@ class LDAModel(ModelEstimator):
             counter=list(cumulative_mask).index(True)
             for comm_index,comment in enumerate(f): # for each comment
                 if comm_index >= cumulative[counter]:
-                    counter += 1 # update the year counter if need be
+                    counter += 1 # update the counter if need be
 
                 if self.all_ or (not self.all_ and comm_index in rand_subsample):
-                    indexed_dataset.append((comm_index,comment,counter)) # append the comment and the relevant year to the dataset
+                        indexed_dataset.append((comm_index,comment,counter))
+                    # append the comment index, the text and the relevant month
+                    # or year to the dataset
 
         return indexed_dataset
 
     ### Topic Contribution (threaded) ###
-    ### Define a function that retrieves the most likely topic for each word in a comment and calculates
+    ### Define a function that retrieves the most likely topic for each word in
+    # a comment and calculates
     def Topic_Asgmt_Retriever_Multi(self, indexed_comment):
         ## initialize needed vectors
-        dxt = np.zeros([num_topics,1]) # a vector for the normalized contribution of each topic to the comment
-        analyzed_comment_length = 0 # a counter for the number of words in a comment for which the model has predictions
+        dxt = np.zeros([num_topics,1]) # a vector for the normalized
+        # contribution of each topic to the comment
+        analyzed_comment_length = 0 # a counter for the number of words in a
+        # comment for which the model has predictions
+
+        # create a list to write index, month and year, topic assignments to a
+        # CSV file for analysis in R
+        data_for_R = [indexed_comment[0],indexed_comment[2],[]]
+        if self.topic_cont_freq == "monthly":
+            data_for_R.append(2006+floor(float(indexed_comment[2]) / float(12)))
 
         comment=indexed_comment[1].strip().split()
         bow=self.dictionary.doc2bow(comment)
@@ -604,9 +645,14 @@ class LDAModel(ModelEstimator):
                 # topics, or to no topics
                 assert all([ word_id not in phis[i] for i in range(self.num_topics) ])
                 continue
+
+            # retrieve the phi values for various words in the comment
+            topic_asgmts=sorted(enumerate(phi_values), key=lambda x:x[1],
+                                reverse=True)
+            # add the most probable topic to the list to be written to a CSV
+            data_for_R[2].append(topic_asgmts[0][0])
+
             if self.one_hot:
-                topic_asgmts=sorted(enumerate(phi_values), key=lambda x:x[1],
-                                    reverse=True)
                 dxt[topic_asgmts[0][0],0] += freq
             else:
                 assert len(phi_values)==self.num_topics
@@ -615,13 +661,17 @@ class LDAModel(ModelEstimator):
                     dxt[topic,0] += phi_val
             analyzed_comment_length += freq # update word counter
 
-        if analyzed_comment_length > 0: # if the model had predictions for at least some of the words in the comment
-            dxt = (float(1) / float(analyzed_comment_length)) * dxt # normalize the topic contribution using comment length
-
-            Running_Sums[indexed_comment[2]].Update_Val(dxt) # update the vector of topic contributions
+        if analyzed_comment_length > 0: # if the model had predictions for at
+        # least some of the words in the comment
+            # normalize the topic contribution using comment length
+            dxt = (float(1) / float(analyzed_comment_length)) * dxt
+            # update the vector of topic contributions
+            Running_Sums[indexed_comment[2]].Update_Val(dxt)
 
         else: # if the model had no reasonable topic proposal for any of the words in the comment
             no_predictions[indexed_comment[2]].Increment() # update the no_predictions counter
+
+        return data_for_R
 
     ### Define the main function for multi-core calculation of topic contributions
     def Topic_Contribution_Multicore(self):
@@ -640,7 +690,8 @@ class LDAModel(ModelEstimator):
         per, _=Get_Counts(random=not self.all_, frequency=self.topic_cont_freq)
         no_intervals=len(cumulative)
 
-        ## Create shared counters for comments for which the model has no reasonable prediction whatsoever
+        ## Create shared counters for comments for which the model has no
+        # reasonable prediction whatsoever
         global no_predictions
         no_predictions = {}
 
@@ -655,7 +706,7 @@ class LDAModel(ModelEstimator):
         pool = multiprocessing.Pool(processes=CpuInfo())
         inputs=[ (indexed_comment, self.__dict__) for indexed_comment in
                  indexed_dataset ]
-        pool.map(func=Topic_Asgmt_Retriever_Multi_wrapper, iterable=inputs)
+        data_for_CSV = pool.map(func=Topic_Asgmt_Retriever_Multi_wrapper, iterable=inputs)
         pool.close()
         pool.join()
 
@@ -673,6 +724,23 @@ class LDAModel(ModelEstimator):
                           ) * output[i,:]
 
         np.savetxt(self.fns["topic_cont"], output) # save the topic contribution matrix to file
+
+        ## write data_for_CSV to file
+        with open(self.fns["data_for_R"],'a+b') as data: # create the file
+            writer_R = csv.writer(data) # initialize the CSV writer
+            if len(data_for_CSV[0]) == 4: # if month information included
+                writer_R.writerow(['number','month','year','topic_assignments']) # write headers to the CSV file
+                for comment in data_for_CSV: # for each comment
+                    month = (comment[1]+1) % 12 # find the relevant month of year
+                    if month == 0:
+                        month = 12
+                    writer_R.writerow([comment[0],month,comment[3],comment[2]]) # the indexing should be in line with the other output files
+            elif len(data_for_CSV[0]) == 3: # if only year info is included
+                writer1.writerow(['number','year','topic_assignments']) # write headers to the CSV file
+                for comment in data_for_CSV:
+                    writer_R.writerow([comment[0],comment[1],comment[2]])
+            else:
+                raise Exception('The topic assignments are not formatted properly.')
 
         # timer
         print("Finished calculating topic contributions at "+time.strftime('%l:%M%p'))
@@ -715,36 +783,59 @@ class LDAModel(ModelEstimator):
                 print("Operation aborted. Please note that loaded topic contribution matrix and indexed dataset are required for determining top topics and sampling comments.")
                 pass
 
-    # Determine the top topics
+    # Determine the top topics based on average per-comment contribution over time
     def get_top_topics(self, yr_topic_cont=None):
         if isinstance(yr_topic_cont, type(None)):
             yr_topic_cont=self.yr_topic_cont
         # initialize a vector for average topic contribution
+
+        # get the comment count for each month
+        per, cumulative = Get_Counts(frequency=self.topic_cont_freq)
+
+        # scale contribution based on the number of comments in each month
+        scaled = np.zeros_like(yr_topic_cont)
+        for i in range(len(per)):
+            if per[i] != 0:
+                scaled[i,:] = (float(per[i]) / float(cumulative[-1])) * yr_topic_cont[i,:]
+
+        # average contribution for each topic
         avg_cont = np.empty(self.num_topics)
         for i in range(self.num_topics):
-            avg_cont[i] = np.mean(yr_topic_cont[:,i])
+            # avg_cont[i] = np.sum(scaled[:,i])
+            avg_cont[i] = np.mean(yr_topic_cont[24:,i])
 
         # Find the indices of the [sample_topics] fraction of topics that have
         # the greatest average contribution to the model
-        top_topic_no = int(ceil(self.sample_topics*self.num_topics))
-        self.top_topics = avg_cont.argsort()[-top_topic_no:][::-1]
+        if not isinstance(sample_topics,type(None)): # if based on fraction
+            top_topic_no = int(ceil(self.sample_topics*self.num_topics))
+            self.top_topics = avg_cont.argsort()[-top_topic_no:][::-1]
+        # or the indices of topics that have passed the threshold for
+        # consideration based on average contribution
+        else: # if based on threshold
+            self.top_topics = np.where(avg_cont >= top_topic_thresh)[0]
+
+        # If a set of top topics is provided beforehand
+        if not isinstance(self.top_topic_set, type(None)):
+            self.top_topics = self.top_topic_set
+
+        print(self.top_topics)
 
     ### Define a function for plotting the temporal trends in the top topics
     def Plotter(self, name):
         plotter = []
         for topic in self.top_topics:
-            plotter.append(self.yr_topic_cont[:,topic].tolist())
+            plotter.append(self.yr_topic_cont[24:,topic].tolist())
 
         plots = {}
         for i in range(len(self.top_topics.tolist())):
             plots[i]= plt.plot(range(1,len(plotter[0])+1),plotter[i],
                                label='Topic '+str(self.top_topics[i]))
         plt.legend(loc='best')
-        plt.xlabel('{}/{}-{}/{}'.format(dates[0][1], dates[0][0], dates[-1][1],
+        plt.xlabel('{}/{}-{}/{}'.format(dates[24][1], dates[24][0], dates[-1][1],
                                         dates[-1][0]))
         plt.ylabel('Topic Probability')
         plt.title('Contribution of the top topics to the LDA model for {}/{}-{}/{}'.format(
-                  dates[0][1], dates[0][0], dates[-1][1], dates[-1][0]))
+                  dates[24][1], dates[24][0], dates[-1][1], dates[-1][0]))
         plt.grid(True)
         plt.savefig(name)
         plt.show()
@@ -833,6 +924,7 @@ class LDAModel(ModelEstimator):
         top_topic_probs = {} # initialize a dictionary for all top comment indices
         sampled_indices = {} # initialize a dictionary for storing sampled comment indices
         sampled_probs = {} # initialize a list for storing top topic contribution to sampled comments
+        sampled_ids = {} # intialize a list for storing randomly chosen six-digit IDs for sampled comments
 
         for topic in self.top_topics: # for each top topic
             # find all comments with significant contribution from that topic
@@ -846,8 +938,12 @@ class LDAModel(ModelEstimator):
             for element in top_topic_probs[topic][:min(len(top_topic_probs[topic]),sample_comments)]:
                 sampled_indices[topic].append(element[0]) # record the index
                 sampled_probs[topic].append(element[2]) # record the contribution of the topic
-
-        return sampled_indices,sampled_probs
+                # suggest a random 8-digit id for the sampled comment
+                prop_id = np.random.random_integers(low=10000000,high=99999999)
+                while prop_id in sampled_ids: # resample in the unlikely event the id is already in use
+                    prop_id = np.random.random_integers(low=10000000,high=99999999)
+                sampled_ids[element[0]] = prop_id # store the random id
+        return sampled_indices,sampled_probs,sampled_ids
 
     ### retrieve the original text of sampled comments and write them to file along with the relevant topic ID
     # IDEA: Should add the possibility of sampling from specific year(s)
@@ -856,143 +952,264 @@ class LDAModel(ModelEstimator):
         print("Started sampling top comments at " + time.strftime('%l:%M%p'))
 
         # find the top comments associated with each top topic
-        sampled_indices,sampled_probs = self.Top_Comment_Indices()
+        sampled_indices,sampled_probs,sampled_ids = self.Top_Comment_Indices()
 
-        per, cumulative=Get_Counts(frequency="yearly")
+        _, yearly_cumulative = Get_Counts(frequency="yearly")
+        _, monthly_cumulative = Get_Counts(frequency="monthly")
 
         if not Path(self.fns["original_comm"]).is_file(): # if the original relevant comments are not already available on disk, read them from the original compressed files
             # json parser
             decoder = json.JSONDecoder(encoding='utf-8')
 
-            ## iterate over files in directory to find the relevant documents
-            sample = 0 # counting the number of sampled comments
-            counter = 0 # counting the number of all processed comments
-            year_counter = 0 # the first year in the corpus (2006)
-
             # check for the presence of data files
             if not glob.glob(self.path+'/*.bz2'):
                 raise Exception('No data file found')
 
-            # open a CSV file for recording sampled comment values
-            with open(self.fns["sample_ratings"],'a+b') as csvfile:
-                writer = csv.writer(csvfile) # initialize the CSV writer
-                writer.writerow(['number','index','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
+            # open two CSV files for recording sampled comment keys and ratings
+            with open(self.fns["sample_keys"],'a+b') as sample_keys, \
+            open(self.fns["sample_ratings"],'a+b') as sample_ratings, \
+            open(self.fns["sampled_comments"],'a+') as fout: # determine the I/O files:
 
-            # iterate through the files in the 'path' directory in alphabetic order
-            for filename in sorted(os.listdir(self.path)):
-                # only include relevant files
-                if os.path.splitext(filename)[1] == '.bz2' and 'RC_' in filename:
-                    ## prepare files
-                    # open the file as a text file, in utf8 encoding
-                    fin = bz2.BZ2File(filename,'r')
+                ## iterate over files in directory to find the relevant documents
+                counter = 0 # counting the number of all processed comments
+                year_counter = 0 # the first year in the corpus (2006)
 
-                    # create a file to write the sampled comments to
-                    fout = open(self.fns["sampled_comments"],'a+')
+                # create CSV file for recording sampled comment information
+                writer_keys = csv.writer(sample_keys) # initialize the CSV writer
+                writer_keys.writerow(['comment number','random index','month','year','topic','contribution']) # write headers to the CSV file
 
-                    # open CSV file to write the sampled comment data to
-                    csvfile = open(self.fns["sample_ratings"],'a+b')
-                    writer = csv.writer(csvfile) # initialize the CSV writer
+                # create CSV file for recording sampled comment ratings
+                writer_ratings = csv.writer(sample_ratings)
+                writer_ratings.writerow(['index','pro','values','consequences','preferences','interpretability'])
 
-                    ## read data
-                    for line in fin: # for each comment
-                        # parse the json, and turn it into regular text
-                        comment = decoder.decode(line)
-                        original_body = HTMLParser.HTMLParser().unescape(comment["body"]) # remove HTML characters
+                bag_of_comments = {} # initialize a list for the sampled
+                # original comments. Will be used to shuffle comments before
+                # writing them to file
 
-                        # filter comments by relevance to the topic
-                        if len(GAYMAR.findall(original_body)) > 0 or len(MAREQU.findall(original_body)) > 0:
-                            # clean the text for LDA
-                            body = Parser(stop=self.stop).LDA_clean(original_body)
+                # iterate through the files in the 'path' directory in alphabetic order
+                for filename in sorted(os.listdir(self.path)):
+                    # only include relevant files
+                    if os.path.splitext(filename)[1] == '.bz2' and 'RC_' in filename:
+                        ## prepare files
+                        # open the file as a text file, in utf8 encoding
+                        with bz2.BZ2File(filename,'r') as fin:
 
-                            # if the comment body is not empty after preprocessing
-                            if body.strip() != "":
-                                counter += 1 # update the counter
+                            ## read data
+                            for line in fin: # for each comment
+                                # parse the json, and turn it into regular text
+                                comment = decoder.decode(line)
+                                original_body = HTMLParser.HTMLParser().unescape(comment["body"]) # remove HTML characters
 
-                                # update year counter if need be
-                                if counter-1 >= cumulative[year_counter]:
-                                    year_counter += 1
+                                # filter comments by relevance to the topic
+                                if len(GAYMAR.findall(original_body)) > 0 or len(MAREQU.findall(original_body)) > 0:
+                                    # clean the text for LDA
+                                    body = Parser(stop=self.stop).LDA_clean(original_body)
 
-                                for topic,indices in sampled_indices.iteritems():
-                                    if counter-1 in indices:
-                                        # remove mid-comment lines and set encoding
-                                        original_body = original_body.replace("\n","")
-                                        original_body = original_body.encode("utf-8")
+                                    # if the comment body is not empty after preprocessing
+                                    if body.strip() != "":
+                                        counter += 1 # update the counter
 
-                                        # update the sample counter
-                                        sample += 1
+                                        # update year counter if need be
+                                        if counter-1 >= yearly_cumulative[year_counter]:
+                                            year_counter += 1
 
-                                        # print the sample number to file
-                                        print(sample,file=fout)
+                                        # find the relevant month
+                                        for value in monthly_cumulative:
+                                            if value > counter-1:
+                                                month = (monthly_cumulative.index(value) + 1) % 12
+                                                if month == 0:
+                                                    month = 12
+                                                break
 
-                                        # print relevant year to file
-                                        print('Year: '+str(2006+year_counter),file=fout)
+                                        for topic,indices in sampled_indices.iteritems():
+                                            if counter-1 in indices:
+                                                # remove mid-comment lines and set encoding
+                                                original_body = original_body.replace("\n","")
+                                                original_body = original_body.encode("utf-8")
 
-                                        # print the topic to file
-                                        print('Topic '+str(topic),file=fout)
+                                                bag_of_comments[sampled_ids[counter-1]] = " ".join(comment.strip().split())
 
-                                        # print the topic contribution to the comment to file
-                                        itemindex = sampled_indices[topic].index(counter-1)
-                                        print('Contribution: '+str(sampled_probs[topic][itemindex]),file=fout)
+                                                # print the values to CSV file
+                                                itemindex = sampled_indices[topic].index(comm_index)
+                                                writer_keys.writerow([counter-1,sampled_ids[counter-1],month,2006+year_counter,topic,sampled_probs[topic][itemindex]])
 
-                                        # print the comment to file
-                                        print(" ".join(original_body.strip().split()),file=fout)
+                                                # print the comment to file
+                                                print(" ".join(original_body.strip().split()),file=fout)
 
-                                        # print the values to CSV file
-                                        writer.writerow([sample,counter-1,topic,sampled_probs[topic][itemindex]])
+                                                break # if you found the index in one of the topics, no reason to keep looking
 
-                                        break # if you found the index in one of the topics, no reason to keep looking
-
-                    # close the files to save the data
-                    fin.close()
-                    fout.close()
-                    csvfile.close()
+                ## shuffle the comments and write to file for human raters
+                random_keys = np.random.permutation(bag_of_comments.keys())
+                for random_key in random_keys:
+                    writer_ratings.writerow([random_key])
+                    print('index: '+str(random_key),file=fout)
+                    print(" ".join(bag_of_comments[random_key].strip().split()),file=fout)
 
             # timer
             print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
 
         else: # if a file containing only the original relevant comments is available on disk
             with open(self.fns["original_comm"],'r') as fin, \
-                 open(self.fns["sample_ratings"],'a+b') as csvfile, \
+                 open(self.fns["sample_keys"],'a+b') as sample_keys, \
+                 open(self.fns["sample_ratings"],'a+b') as sample_ratings, \
                  open(self.fns["sampled_comments"],'a+') as fout: # determine the I/O files
 
-                sample = 0 # initialize a counter for the sampled comments
+                # create CSV file for recording sampled comment information
+                writer_keys = csv.writer(sample_keys) # initialize the CSV writer
+                writer_keys.writerow(['comment number','random index','month','year','topic','contribution']) # write headers to the CSV file
+
+                # create CSV file for recording sampled comment ratings
+                writer_ratings = csv.writer(sample_ratings)
+                writer_ratings.writerow(['index','pro','values','consequences','preferences','interpretability'])
+
+                bag_of_comments = {} # initialize a list for the sampled
+                # original comments. Will be used to shuffle comments before
+                # writing them to file
                 year_counter = 0 # initialize a counter for the comment's year
-                writer = csv.writer(csvfile) # initialize the CSV writer
-                writer.writerow(['number','index','topic','contribution','values','consequences','preferences','interpretability']) # write headers to the CSV file
 
                 for comm_index,comment in enumerate(fin): # iterate over the original comments
+
+                    # update year counter if need be
+                    if comm_index >= yearly_cumulative[year_counter]:
+                        year_counter += 1
+
                     for topic,indices in sampled_indices.iteritems():
                         if comm_index in indices:
-                            # update the year counter if need be
-                            if comm_index >= cumulative[year_counter]:
-                                year_counter += 1
 
-                            # update the sample counter
-                            sample += 1
+                            # find the relevant month
+                            for value in monthly_cumulative:
+                                if value > comm_index:
+                                    month = (monthly_cumulative.index(value) + 1) % 12
+                                    if month == 0:
+                                        month = 12
+                                    break
 
-                            # print the sample number to file
-                            print(sample,file=fout)
-
-                            # print the relevant year to file
-                            print('Year: '+str(2006+year_counter),file=fout)
-
-                            # print the topic to output file
-                            print('Topic '+str(topic),file=fout)
-
-                            # print the topic contribution to the comment to file
-                            itemindex = sampled_indices[topic].index(comm_index)
-                            print('Contribution: '+str(sampled_probs[topic][itemindex]),file=fout)
-
-                            # print the comment to output file
-                            print(" ".join(comment.strip().split()),file=fout)
+                            bag_of_comments[sampled_ids[comm_index]] = " ".join(comment.strip().split())
 
                             # print the values to CSV file
-                            writer.writerow([sample,comm_index,topic,sampled_probs[topic][itemindex]])
+                            itemindex = sampled_indices[topic].index(comm_index)
+                            writer_keys.writerow([comm_index,sampled_ids[comm_index],month,2006+year_counter,topic,sampled_probs[topic][itemindex]])
 
                             break # if you found the index in one of the topics, no reason to keep looking
 
+                ## shuffle the comments and write to file for human raters
+                random_keys = np.random.permutation(bag_of_comments.keys())
+                for random_key in random_keys:
+                    writer_ratings.writerow([random_key])
+                    print('index: '+str(random_key),file=fout)
+                    print(" ".join(bag_of_comments[random_key].strip().split()),file=fout)
+
                 # timer
                 print("Finished sampling top comments at " + time.strftime('%l:%M%p'))
+
+    ## function for sampling the most impactful comments
+    def sample_pop(self,num_pop=num_pop,min_comm_length=min_comm_length):
+
+        assert Path(self.fns["counts"]).is_file()
+        assert Path(self.fns["original_comm"]).is_file()
+        assert Path(self.fns["votes"]).is_file()
+
+        # Retrieve the list of upvote/downvote values
+        with open(self.fns["counts"],'r') as f:
+            timelist = []
+            for line in f:
+                if line.strip() != "":
+                    timelist.append(int(line))
+
+        # Retrieve the text of the original comments
+        with open("original_comm",'r') as f:
+            orig_comm = []
+            for line in f:
+                if line.strip() != "":
+                    orig_comm.append(line.strip())
+
+        # Retrieve the pre-processed comments
+        with open("lda_prep",'r') as f:
+            lda_prep = []
+            for line in f:
+                if line.strip() != "":
+                    lda_prep.append(line.strip())
+
+        # Calculate the relevant month and year for each comment
+        rel_month = np.zeros((timelist[-1],1),dtype="int32")
+        month_of_year = np.zeros((timelist[-1],1),dtype="int32")
+        rel_year = np.zeros((timelist[-1],1),dtype="int32")
+        for rel_ind in range(timelist[-1]):
+            # Find the relevant month and year
+            rel_month[rel_ind,0] = next((i+1 for i in range(len(timelist)) if timelist[i] > rel_ind),141)
+            month_of_year[rel_ind,0] = rel_month[rel_ind,0] % 12
+            if month_of_year[rel_ind,0] == 0:
+                month_of_year[rel_ind,0] = 12
+            rel_year[rel_ind,0] = int(2006+int(floor(rel_month[rel_ind,0]/12)))
+
+        # retrieve comment scores from file
+        with open("votes",'a+') as f:
+            vote_count = dict()
+            abs_vote_count = dict()
+            for number,line in enumerate(f):
+                if line.strip() != "":
+                    vote_count[str(number)] = int(line)
+                    abs_vote_count[str(number)] = abs(int(line))
+
+        # sort scores based on absolute value
+        sorted_votes = sorted(abs_vote_count.items(), key=operator.itemgetter(1),reverse=True)
+
+        # Find the num_pop comments with the highest impact on the discourse
+        counter = 0
+        results = []
+        abs_results = []
+        popular = []
+        for x in sorted_votes:
+            comment = orig_comm[int(x[0])]
+            if min_comm_length != None:
+                if len(comment.strip().split()) > min_comm_length:
+                    counter += 1
+                    results.append(vote_count[x[0]])
+                    abs_results.append(x[1])
+                    popular.append(int(x[0]))
+            else:
+                counter += 1
+                results.append(vote_count[x[0]])
+                abs_results.append(x[1])
+                popular.append(int(x[0]))
+            if counter == num_pop:
+                break
+
+        # retrieve the text of popular comments
+        pop_orig_texts = []
+        pop_proc_texts = []
+        for pop_comment in popular:
+            pop_orig_texts.append(orig_comm[pop_comment])
+        for pop_comment in popular:
+            pop_proc_texts.append(lda_prep[pop_comment])
+
+        # Retrieve topic probability from the model for each popular comment
+        pop_comm_topic = []
+        pop_comm_contrib = []
+        for comment in pop_proc_texts:
+            comment= comment.strip().split()
+            bow = self.dictionary.doc2bow(comment)
+            # get topic probabilities for the document
+            topic_dist = self.ldamodel.get_document_topics([bow], per_word_topics=False)
+            # sort the probabilities
+            sorted_topics = sorted(topic_dist[0], key=lambda x:x[1],reverse=True)
+            # add the most probable topic to the list to be written to a CSV
+            # pop_comm_topic.append(sorted_topics[0][0])
+            # pop_comm_contrib.append(sorted_topics[0][1])
+            pop_comm_topic.append(sorted_topics) # this appends ALL contributing topics
+
+        # write the most popular comments, their timeframe and score to file
+        with open(self.fns["popular_comments"],'w+b') as csvfile:
+            writer = csv.writer(csvfile)
+            # writer.writerow(['text','year','month','score','topic','contribution'])
+            writer.writerow(['text','year','month','score','topic contribution'])
+            for number,pop_comment in enumerate(popular):
+                # writer.writerow([pop_orig_texts[number],rel_year[pop_comment,0],
+                # month_of_year[pop_comment,0],results[number],
+                # pop_comm_topic[number],pop_comm_contrib[number]])
+                writer.writerow([pop_orig_texts[number],rel_year[pop_comment,0],
+                month_of_year[pop_comment,0],results[number],
+                pop_comm_topic[number]])
 
 class NNModel(ModelEstimator):
     def __init__(self, FrequencyFilter=FrequencyFilter, **kwargs):
