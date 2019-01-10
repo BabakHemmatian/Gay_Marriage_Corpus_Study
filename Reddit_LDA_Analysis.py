@@ -7,8 +7,9 @@ from math import ceil
 import numpy as np
 from config import *
 from ModelEstimation import LDAModel
-from reddit_parser import Parser
+from parser import Parser
 from Utils import *
+import ast
 
 ### set default file encoding
 reload(sys)
@@ -62,6 +63,11 @@ ldam.get_model()
 if calculate_perplexity:
     train_per_word_perplex,eval_per_word_perplex = ldam.Get_Perplexity()
 
+### calculate umass coherence to allow for interpretability comparison between models with different [num_topics]
+
+if calculate_coherence:
+    ldam.Get_Coherence()
+
 ### Determine Top Topics Based on Contribution to the Model ###
 
 # NOTE: There is a strict dependency hierarchy between the functions that come in this section and the next. They should be run in the order presented
@@ -97,6 +103,19 @@ with open(output_path+'/top_words','a+') as f: # create a file for storing the h
 # NOTE: This function only outputs the probabilities for comments of length at least [min_comm_length] with non-zero probability assigned to at least one top topic
 ldam.Get_Top_Topic_Theta()
 
+## call the function for sampling the most impactful comments
+if num_pop != None:
+    ldam.sample_pop()
+
 ### for the top topics, choose the [sample_comments] comments that reflect the greatest contribution of those topics and write them to file
 # NOTE: If write_original was set to False during the initial parsing, this function will require the original compressed data files (and will be much slower). If not in the same directory as this file, change the "path" argument
 ldam.Get_Top_Comments()
+
+## find top words associated with EVERY topic and write them to file
+top_words_all = {key:[] for key in range(num_topics)}
+with open(output_path+'/top_words_all_'+str(num_topics),'a+') as f: # create a file for storing the high-probability words
+    for topic in top_words_all.iterkeys():
+        print(topic,file=f)
+        output = ldam.ldamodel.show_topic(topic,topn=topn)
+        print(output,file=f)
+        top_words_all[topic] = ldam.ldamodel.show_topic(topic,topn=topn)
