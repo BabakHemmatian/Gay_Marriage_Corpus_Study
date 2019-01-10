@@ -104,7 +104,7 @@ for year in years:
 # NOTE: To avoid confusion between different kinds of models, record the
 # variables most important to your iteration in the folder name
 # Force this import so output_path is correctly set
-# from lda_config import ENTIRE_CORPUS
+from lda_config import ENTIRE_CORPUS
 output_path = path + "/LDA_"+str(ENTIRE_CORPUS)+"_"+str(num_topics)
 
 ### Preprocessing ###
