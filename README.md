@@ -28,7 +28,19 @@ Original text of posts in our reported corpus, as well as pre-processed versions
 
 You can use Latent Dirichlet Allocation (LDA) to create and examine topic models of the corpus via [Reddit_LDA_Analysis.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Reddit_LDA_Analysis.py). Default hyperparameters for the model to be trained can be set using [lda_defaults.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_defaults.py), and can be overridden by assigning the desired value in [lda_config.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_config.py). Functions for determining top topics via contribution to contextual word-topic assignments, sampling top comments associated with each topic that pass certain criteria, and extracting temporal trends are included. Unless the default path variable is changed, this file should be in the same directory as [Utils.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/Utils.py). 
 
-Models developed for the manuscript using this module can be found in the [Learned_Models](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Learned_Models) folder. A sample of comments most representative of each topic in that model can be found in the [Most_Repr_Comments](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Most_Repr_Comments) folder. 
+Models developed for the manuscript using this module can be found in the [Learned_Models](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Learned_Models) folder. 
+
+A sample of comments most representative of each topic in the LDA model reported in the manuscript can be found in the [Most_Repr_Comments](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Most_Repr_Comments) folder. The following IDs can be used to identify the reported topics:
+* 4 employer attitude and regulations
+* 12 religious arguments
+* 14 cultural and historical status
+* 16 forcing vs. allowing behaviors
+* 22 politicians' stance
+* 27 children of same-sex parents
+* 28 same-sex marriage as a policy issue
+* 33 personal anecdotes
+* 48 freedom of belief
+* 49 LGBT rights
 
 The set of top words associated with models with various numbers of topics (discussed in the manuscript) can be found in [Top_Words](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/tree/master/Top_Words).
 
