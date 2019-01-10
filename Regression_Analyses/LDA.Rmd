@@ -1,0 +1,304 @@
+---
+output:
+  pdf_document:
+    latex_engine: xelatex
+mainfont: DejaVu Sans
+monofont: DejaVu Sans Mono 
+---
+
+#### Load and formate ratings of impactful comments
+
+```{r}
+options(stringsAsFactors=F)
+library(reticulate)
+
+dim(excomm <- read.csv("Ratings.csv", T))
+
+dim(excomm <- excomm[,!grepl("Time", colnames(excomm))])
+unique(gsub("\\..*", "@", colnames(excomm)))
+
+xtabs(~Group, excomm)
+excomm <- excomm[-1,]
+xtabs(~Group, excomm)
+
+
+head(excomm[1,1:7])
+
+dim(excomm.lean <- excomm[,grepl("Group|\\.", colnames(excomm))])
+unique(gsub("\\..*", "@", colnames(excomm.lean)))
+
+```
+
+```{r}
+library(reshape2)
+head(reallylong <- melt(excomm.lean, id.vars="Group"))
+head(nchar(reallylong$value))
+nrow(reallylong <- subset(reallylong, nchar(value) > 0))
+
+xtabs(~gsub("\\..*", "@", variable) + Group, reallylong)
+
+nrow(reallylong <- subset(reallylong, !grepl("^Comment_[0-9]", variable)))
+
+head(subset(reallylong, grepl("^Comment_0", variable) & Group == 0))
+
+reallylong <- within(reallylong, {
+    type <-
+        gsub("^Comment_([^_]+)_.*", "\\1", variable)
+    withingroup.number <-
+        as.numeric(gsub(".*\\.([^.]+).$", "\\1", variable))
+})
+reallylong <- reallylong[,!"variable" == colnames(reallylong)]
+head(reallylong)
+reallylong <- reallylong[-c(1:8),]
+
+pro <- subset(reallylong, type == "Pro")
+src <- subset(reallylong, type == "Src")
+colnames(pro)[colnames(pro) == "value"] <- "pro"
+colnames(src)[colnames(src) == "value"] <- "src"
+pro <- pro[,!colnames(pro) == "type"]
+src <- src[,!colnames(src) == "type"]
+
+dim(ratings <- merge(pro, src))
+head(ratings)
+
+```
+
+
+```{r}
+assoc <- do.call(rbind,
+                 lapply(list.files(".", "exp_pop_comm_.*csv"),
+                        function(fname){
+                            d <- read.csv(fname, F)
+                            colnames(d) <- c("orig", "text", "toptopic", "contribution")
+                            d$withingroup.number <- 1:nrow(d)
+                            d$Group <- gsub(".*_([^_]+)_.*", "\\1", fname)
+                            d
+                        })
+                 )
+
+head(assoc)
+nrow(assoc)
+
+dim(ratings <- merge(ratings, assoc))
+head(ratings[,colnames(ratings) != "text"])
+```
+
+
+#### add topic contributions to the data or load them from file
+
+
+```{r}
+colnames(d.comments <- read.csv("popular_comments_50.csv", T))
+d.comments$orig <- 0:(nrow(d.comments)-1)
+
+n.topics <- 50
+topic.contrib <- data.frame(t(sapply(1:nrow(d.comments), function(commentx){
+    (topics.str <- py_eval(d.comments$topic.contribution[commentx]))
+    (names(topics.str) <- sapply(topics.str, function(tuple){
+        tuple[[1]]
+    }))
+
+    (topics.flat <- sapply(topics.str, function(l){l[[2]]}))
+    ret <- topics.flat[as.character(1:n.topics)]
+    ret[is.na(ret)] <- 0
+    names(ret) <- 0:(n.topics-1)
+    ret
+})))
+
+dim(topic.contrib)
+
+
+xtabs(~toptopic, ratings)
+d.comments <- cbind(d.comments, topic.contrib)
+d.comments[1,]
+
+
+dim(ratings.eval <- merge(ratings, d.comments))
+ratings.eval$src <- as.numeric(ratings.eval$src)
+dim(ratings.eval <- subset(ratings.eval, !src == 4))
+
+load("C:\\Users\\Babak\\Downloads\\Expert-SameSex-no4-02-ratings(3).RData")
+# note that the max top topic columns are wrong. I didn't fix them as they were not used in future analysis
+```
+
+#### Run stepwise regression for ratings with topic contributions as predictors and output correlation and accuracy
+
+```{r}
+p2n <- function(p){log((p+.1)/(1-p+.1))}
+
+d.formula <- paste(". ~ 1",
+                        paste0("p2n(X", 0:(n.topics-1), ")", collapse=" + "),
+                   sep=" + ")
+
+ratings.eval.z <-
+    do.call(rbind, lapply(unique(ratings.eval$Group), function(g){
+        ret <- subset(ratings.eval, Group == g)
+        ret$src.c <- ret$src - 4
+        ret
+    }))
+
+save(ratings.eval.z, file="Expert-SameSex-no4-02-ratings.RData")
+colnames(ratings.eval.z)
+
+summary(d.drop <- stats::step(lm(src.c ~ 1,
+                               data=subset(ratings.eval.z))
+                          , as.formula(d.formula), trace=0))
+
+
+cor(predict(d.drop), ratings.eval.z$src.c)
+mean(I(predict(d.drop) > 0) == I(ratings.eval.z$src.c > 0))
+
+```
+
+#### Include random intercepts for raters and calculate correlation and accuracy again
+
+```{r}
+library(lmerTest)
+library(MuMIn)
+library(lme4)
+(d.formula.all <- as.formula(paste("src.c ~ 1",
+                        paste0("X", 0:(n.topics-1), collapse=" + "),
+                        sep=" + ")))
+
+suppressMessages(suppressWarnings({
+    d.lmer <- step(lmer(update(d.formula.all, . ~ . + (1|Group)),
+                            data=ratings.eval.z))
+}))
+
+summary(d.drop <- attributes(d.lmer)$model)
+cor(predict(d.drop), ratings.eval.z$src.c)
+mean(I(predict(d.drop) > 0) == I(ratings.eval.z$src.c > 0))
+
+
+```
+
+#### Run the regression analysis with ten ten-fold cross-validations and find the significant predictor topics
+
+```{r}
+set.seed(12)
+ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+
+(d.formula.all <- as.formula(paste("src.c ~ 1",
+                        paste0("X", 0:(n.topics-1), collapse=" + "),
+                        sep=" + ")))
+
+
+set.seed(12)
+lm.many <- lapply(1:10, function(nrun){
+    ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+    (afold <- lapply(unique(ratings.eval.z$fold), function(x.fold){
+        dim(d.train <<- subset(ratings.eval.z, !fold == x.fold))
+        dim(d.test <<-  subset(ratings.eval.z, fold == x.fold))
+        summary(d.drop <<- stats::step(lm(src.c ~ 1, data=d.train)
+                                     , as.formula(d.formula), trace=0))
+        correct = sum(sign(d.test$src.c) == sign(predict(d.drop, newdata=d.test)))
+        incorrect = sum(sign(d.test$src.c) != sign(predict(d.drop, newdata=d.test)))
+        ret <- list(correct=correct, incorrect=incorrect,
+                    coefs=summary(d.drop)$coefficients,
+                    rsquared = summary(d.drop)$adj.r.squared,
+                    cor=cor(d.test$src.c, predict(d.drop, newdata=d.test)))
+
+        ret
+    }))
+})
+
+
+## Example
+lm.many[[1]]
+
+(lm.many.folds <- sapply(lm.many, function(instance){
+    correctIncorrect <- rowSums(sapply(instance, function(fold){
+        ret <- c(correct=fold$correct, incorrect=fold$incorrect)
+    }))
+    correctIncorrect[1] / sum(correctIncorrect)
+}))
+
+exp(mean(log(lm.many.folds)))
+
+
+sort(xtabs(~unlist(lapply(lm.many, function(instance){
+    lapply(instance, function(fold){
+        ret <- rownames(fold$coefs[fold$coefs[,"Pr(>|t|)"] < .05,])
+    })
+}))))
+
+
+
+
+```
+
+
+#### Run ten ten-fold cross-validations with random intercepts for raters
+
+```{r}
+set.seed(12)
+ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+
+(d.formula.all <- as.formula(paste("src.c ~ 1",
+                        paste0("X", 0:(n.topics-1), collapse=" + "),
+                        sep=" + ")))
+
+ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+
+
+set.seed(12)
+lmer.many <- lapply(1:10, function(nrun){
+    ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+    (afold <- lapply(unique(ratings.eval.z$fold), function(x.fold){
+        dim(d.train <<- subset(ratings.eval.z, !fold == x.fold))
+        dim(d.test <<-  subset(ratings.eval.z, fold == x.fold))
+        suppressMessages(suppressWarnings({
+            d.lmer <<- lmerTest::step(lmer(update(d.formula.all, . ~ . + (1|Group)),
+                                           data=d.train))
+        }))
+        d.drop <<- attributes(d.lmer)$model
+        correct = sum(sign(d.test$src.c) == sign(predict(d.drop, newdata=d.test)))
+        incorrect = sum(sign(d.test$src.c) != sign(predict(d.drop, newdata=d.test)))
+        ret <- list(correct=correct, incorrect=incorrect,
+                    coefs=summary(d.drop)$coefficients,
+                    rsquared = r.squaredGLMM(d.drop)[1] +r.squaredGLMM(d.drop)[2],
+                    cor=cor(d.test$src.c, predict(d.drop, newdata=d.test)))
+
+        ret
+    }))
+    afold
+})
+##exp(mean(log(many)))
+
+(lmer.many.folds <- sapply(lmer.many, function(instance){
+    correctIncorrect <- rowSums(sapply(instance, function(fold){
+        ret <- c(correct=fold$correct, incorrect=fold$incorrect)
+    }))
+    correctIncorrect[1] / sum(correctIncorrect)
+}))
+
+exp(mean(log(lmer.many.folds)))
+
+
+sort(xtabs(~unlist(lapply(lmer.many, function(instance){
+    lapply(instance, function(fold){
+        ret <- rownames(fold$coefs[fold$coefs[,"Pr(>|t|)"] < .05,])
+    })
+}))))
+
+
+
+```
+
+#### Calculate average correlation, adjusted R-squared and average coefficients across folds for both models
+
+```{r}
+(sum(unlist(lapply(lm.many,function(l){lapply(l,function(d){d$cor})}))))
+
+(sum(unlist(lapply(lmer.many,function(l){lapply(l,function(d){d$cor})}))))
+
+sort(xtabs(~unlist(lapply(lm.many, function(l){lapply(l, function(d){rownames(subset(data.frame(d$coefs),  Pr...t.. < .05 & Estimate > 0))})}))))
+
+sort(xtabs(~unlist(lapply(lm.many, function(l){lapply(l, function(d){rownames(subset(data.frame(d$coefs),  Pr...t.. < .05 & Estimate < 0))})}))))
+
+save(lm.many, lmer.many, file="Expert_SameSex-no4-02-objs.RData")
+
+(mean(unlist(lapply(lm.many,function(l){lapply(l,function(d){d$rsquared})}))))
+
+(mean(unlist(lapply(lmer.many,function(l){lapply(l,function(d){d$rsquared})}))))
+```

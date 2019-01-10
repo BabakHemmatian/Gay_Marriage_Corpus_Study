@@ -1,0 +1,346 @@
+```{r setup}
+options(stringsAsFactors=F)
+```
+
+## Topic Contribution
+
+### Data Preparation
+
+```{r loading_comment_data}
+# read the data file
+dim(d <- read.csv("C:\\Users\\Babak\\Downloads\\data_for_R.csv"))
+# remove non-alphanumeric elements (brackets and commas)
+d$topic_assignments <- gsub("\\W", " ", d$topic_assignments)
+# remove multiple spaces
+d$topic_assignments <- gsub(" +", " ", d$topic_assignments)
+# remove the initial and final spaces
+d$topic_assignments <- gsub("(^ )|( $)", "", d$topic_assignments)
+# split topic assignments for each word and save the list in an array
+head(d$topicList <- lapply(strsplit(d$topic_assignments, " "), as.numeric))
+```
+
+### Per-Comment Topic Contribution
+
+```{r per_comment_topic_contrib}
+# define a variable for number of topics
+ntopic <- max(unlist(d$topicList))
+# add month information (month index, number of comments per month) and comment information (comment length) to the dataframe d in a convenient format
+d <- within(d, {
+    commentLength <- sapply(topicList, length)
+    yearMonth <- paste(year, month)
+    monthNum <- (year - 2006)*12 + month - 2
+    monthComments <- xtabs(~monthNum)[monthNum]
+})
+# calculate per-comment topic contribution
+for (topic in 0:ntopic){
+    d[,paste0("t", topic)] <- sapply(d$topicList, function(comment){
+        sum(comment == topic)
+    }) / d$commentLength / d$monthComments
+}
+head(d)
+```
+
+### Per-Month Topic Contribution
+
+```{r per_month_topic_contrib}
+# calculate per-month topic contribution
+perMonth <- sapply(0:ntopic, function(topic){
+    with(d, tapply(get(paste0("t", topic)), monthNum, sum, na.rm=T))
+})
+# rename perMonth column names and transform it into a dataframe
+colnames(perMonth) <- 0:ntopic
+perMonth <- as.data.frame(perMonth)
+# each row in perMonth is now a month, each column associated with a topic, with the value at their intersection determining the contribution of a certain topic to comments in a certain month. The following line ensures that the calculation was done properly and contributions for each month sum to (approximately) 1:
+apply(perMonth, 1, sum, na.rm=T)
+# add a column with the month indices
+perMonth$monthNum <- as.numeric(rownames(perMonth))
+# rename rows to more interpretable month-year labels
+rownames(perMonth) <- as.list(unique(d$yearMonth))
+# add the labels as a separate column
+perMonth$month <- rownames(perMonth)
+# examine the results
+dim(perMonth)
+head(perMonth)
+# remove the 2006-2007 data and turn data into a long format where each month and topic combination is in a separate row
+library(reshape2)
+head(allMonths <- melt(subset(perMonth, monthNum > 22), id.vars=c("month","monthNum"), variable.name="topic", value.name="contrib"))
+```
+
+### Significant Temporal Trends
+
+```{r sig_topic_trends}
+# rename column names in allMonths
+colnames(perMonth)[1:(length(colnames(perMonth))-2)] <- paste0("t",colnames(perMonth)[1:(length(colnames(perMonth))-2)])
+# Run the cubic regression for each topic (.001 is added to the numerator and denominator of log odds to prevent potential division by zero). Also count the number of coefficients with p < 0.05
+
+topic.ts <-
+sapply(paste0("t", 0:ntopic), function(topic){
+y <- perMonth[,topic]
+sum(summary(lm(log((y+.001)/(1-y+.001)) ~
+poly(as.numeric(perMonth$monthNum), 3)))$coefficients[-1,"Pr(>|t|)"] < .001)})
+
+# show the number of significant coefficients for each topic
+sort(topic.ts)
+```
+
+### Choice of Top Topics
+
+```{r important_topics}
+# take the average of per-month topic contributions
+topicContrib <- sort(apply(perMonth[,0:ntopic+1], 2, mean))
+# choose topics with topicContrib > .03
+important <- names(topicContrib)[topicContrib > .03]
+# The contribution of topic 38 passed the threshold using a different contribution calculation (in Python). As a result, this topic was also added to the list of important topics
+important <- append(important,"t38")
+# turn the topic labels into numeric values and print
+(important <- sort(as.numeric(gsub("t", "", important))))
+
+# ADDED FOR THE NEW ANALYSIS (top topics based on lm with ten ten-fold cross-validations of impactful comments)
+
+# c(23,47,28,22,4,14,27) conseq., first two below 50 sig cross-validations, last one 100
+# c(29,12,48,49) val., first one below 50, the last three 100
+
+# important <- c(23,47,28,22,4,14,27,29,12,48,49) # for below 25
+important <- c(28,22,4,14,27,12,48,49) # for below 50
+
+# from above (whether trends among important topics are significant):
+ #t23 t47 t28 t22 t4 t14  t27 
+ #1   1   0   2   3    1   3
+ #t29 t12 t48 t49
+ #0   2   2   3
+# what about just linear trends?
+(sapply(paste0("t", 0:ntopic), function(topic){
+y <- perMonth[,topic]
+sum(summary(lm(log((y+.001)/(1-y+.001)) ~
+poly(as.numeric(perMonth$monthNum), 3)))$coefficients[2,"Pr(>|t|)"] < .05)}))
+# These have significant linear trends: 22 4 12 48 49
+```
+
+#### Plot of top topics combined
+
+```{r combined_contrib_plot}
+# load the library for plotting
+library(ggplot2)
+# create interpretable labels for months
+allMonths.translate <- with(allMonths, tapply(month, monthNum, unique))
+allMonths.translate <- gsub(" .*", "", allMonths.translate)
+# create the plot object, add proper ticks and labels
+ggplot(subset(allMonths, topic %in% important),
+    aes(monthNum,contrib,color=topic)) +
+    geom_smooth(method=lm, formula=y ~ poly(x, 3)) +
+    scale_x_continuous(name="Time",
+                       breaks=c(23+(0:9)*12), labels=allMonths.translate[as.character(c(23+(0:9)*12))]) +
+  theme_bw() +
+  ylab("Percentage contribution") +
+  scale_color_discrete("Topics") +
+  # include vertical lines for important events
+  geom_vline(xintercept=75) + 
+  geom_vline(xintercept=112) 
+
+```
+
+## Discourse Categories
+
+### Obsolete code for human ratings
+
+Run the entire file, but ignore sections under this header.
+
+#### Load Human Ratings
+
+```{r load_human_ratings}
+# load sample_keys and sample_ratings
+sample_keys <- read.csv("C:\\Users\\Babak\\Downloads\\sample_keys.csv" )
+# sample_ratings <- read.csv("C:\\Users\\Babak\\Desktop\\Ratings\\sample_ratings_final_1.csv") 
+# warning! File changed from the original
+sample_ratings <- read.csv("C:\\Users\\Babak\\Downloads\\sample_ratings.csv") 
+# remove non-relevant comments prior to analysis
+sample_ratings$interpretability[sample_ratings$interpretability == 'n'] <- 0
+sample_ratings$interpretability[sample_ratings$interpretability != 0] <- 1
+sample_ratings$interpretability <- as.numeric(sample_ratings$interpretability)
+# sample_ratings <- subset(sample_ratings,interpretability == 1) # wrong file loaded for 12.28.18 analysis
+# change the column name for the random index, so that the keys and ratings can be merged using those IDs
+colnames(sample_keys)[2] <- 'index'
+# merge sample_keys and sample_ratings
+dim(combined_key <- merge(sample_keys, sample_ratings, by ='index'))
+# rename column header for consistency across the dataframes
+colnames(combined_key)[2] <- 'number'
+```
+
+#### Determine Top Comment Classification Certainty
+
+```{r non_dominant_top_topic_avg_contrib}
+# merge sampled comment information with data abiyt the most likely topic for each word
+dim(with_topics <- merge(combined_key,d,by='number'))
+# The merging resulted in two copies of year and month. Here I remove the duplicate columns and rename the original ones
+with_topics$year.y <- NULL
+with_topics$month.y <- NULL
+colnames(with_topics)[3] <- 'month'
+colnames(with_topics)[4] <- 'year'
+# create a matrix where each row is a top topic (in order of topic number) and each column is a sampled post. The values show the number of words in a sampled post assigned to a topic
+top_counts <- sapply(important, function(top){sapply(with_topics$topicList, function(nums){sum(nums == top)})})
+top_counts <- t(top_counts)
+colnames(top_counts) <- 1:length(top_counts[1,])
+# create a vector containing the fraction of words in each comment that belong to non-dominant top topics
+other_top_contrib = rep(0, length(top_counts[1,]))
+for (i in 1:length(top_counts[1,])){
+  other_top_contrib[i] = (sum(top_counts[,i]) - max(top_counts[,i])) / sum(top_counts[,i])
+}
+# calculate the average fraction, as well as the standard deviation
+mean(as.matrix(other_top_contrib))
+sd(as.matrix(other_top_contrib))
+```
+
+#### Discourse Categories Based on Human Ratings
+
+```{r categorize_discourse_type_per_topic}
+# determine the number of comments sampled for each topic that have a higher value-based rating than consequence-based and other
+value_dominant <- with(with_topics,sapply(important, function(top){sum(I(topic == top & values > consequences & values > other))}))
+# determine the number of comments sampled for each topic that have a higher consequence-based rating than value-based and other
+conseq_dominant <- with(with_topics,sapply(important, function(top){sum(I(topic == top & consequences > values & consequences > other))}))
+# the number of comments sampled for each topic that were deemed relevant to same-sex marriage by the raters
+# valid_counts <- as.matrix(xtabs(~topic,subset(with_topics,interpretability == 1))) # wrong file loaded that doesn't have interpretability ratings on 12.28.18
+# determine the number of comments sampled for each topic that have a higher "other" rating than consequence-based and value-based
+valid_counts <- 250 # fake
+neut_dominant <- 0 #valid_counts - (value_dominant+conseq_dominant) # fake
+# determine the discourse category associated with each topic based on the described criteria
+discourse_cats <- ifelse((value_dominant > conseq_dominant) & (value_dominant > neut_dominant) & (value_dominant > (valid_counts / 2)),"values",ifelse((conseq_dominant > value_dominant) & (conseq_dominant > neut_dominant) & (conseq_dominant > valid_counts / 2),"consequences","neutral"))
+# bind the different matrices together into a data frame
+disc_cats <- data.frame(cbind(as.numeric(important),value_dominant,conseq_dominant,neut_dominant,valid_counts,discourse_cats))
+# rename the column labels for interpretability
+colnames(disc_cats) <- c('topic','values','consequences','neutral','valid','categories')
+# print the classifications
+(disc_cats[,c(1,6)])
+```
+
+#### Discourse Categories and Support for Same-sex Marriage
+
+```{r pro_against}
+pro_against <- xtabs(~with_topics$pro,with_topics)
+years <- xtabs(~with_topics$year,with_topics)
+(pro_dist <- as.matrix(xtabs(~with_topics$topic+with_topics$pro,with_topics)))
+```
+
+### Discourse Category Regression and Plot
+
+The following code has been adjusted to classify and plot topics based on results of ten ten-fold cross-validations rather than obsolete human ratings data (see readme.txt for more details).
+
+```{r not_summed_discourse}
+# choose only the month-topic rows in allMonths that are associated with a top topic
+# only_important <- subset(allMonths,topic %in% important) #12.28.18: include all topics
+only_important <- allMonths
+# add discourse category ratings and classifications to the newly formed data frame
+# only_important <- merge(only_important,disc_cats) # orig file needed for disc_cats changed
+# Drop topic 44
+# only_important <- subset(only_important, topic != 44) # marijuana one. Don't need this anyway for the latest analysis
+# Add a column to only_important with the discourse category associated with each topic
+# only_important$discourse_category <- ifelse(only_important$topic %in% c(12,48),"value",ifelse(only_important$topic %in% c(22,23,28),"conseq","neutral"))
+# ADDED FOR THE NEW TOP TOPIC ANALYSIS
+# c(23,47,28,22,4,14,27) conseq., first two below 50, last one 100
+# c(29,12,48,49) val., first one below 50, the last three 100
+only_important$discourse_category <- ifelse(only_important$topic %in% c(12,48,49),"value",ifelse(only_important$topic %in% c(28,22,4,14,27),"conseq","neither")) # (lm) -> this is for below 50
+only_important <- subset(only_important,discourse_category != "neither") # only plot conseq and val
+```
+
+### Reported Value-based vs. Consequence-based Categorizations
+
+#### Pooled contribution estimates
+
+```{r pooled_logodds_top_words_distributions}
+# re-define discourse categories assigned to topics
+# only_important$discourse_category <- as.factor(ifelse(only_important$topic %in% c(20, 48, 2, 31, 49),"value-based",ifelse(only_important$topic %in% c(43,47,11,13,28),"consequence-based","neutral")))
+# pool topic contributions within each discourse category and save the result along with dates to a new data frame
+bymonth <- aggregate(contrib ~ month + monthNum + discourse_category, only_important, sum)
+# calculate the percentage contribution of all top topics to each month's posts and add the resulting value to the recently created data-frame (bymonth). These values will be used in the calculation of log odds
+bymonth_allcontrib <- aggregate(contrib ~ month + monthNum, only_important,sum)
+bymonth$allcontrib <- bymonth_allcontrib$contrib
+# Distribution of discourse category contributions to posts in the dataset
+summary(bymonth)
+# Summary of the contributions of all top topics to posts in the dataset
+summary(bymonth_allcontrib$contrib)
+```
+
+## Main Trend Results
+
+Includes topics reported in the paper
+
+### Regression
+
+```{r pooled_logodds_top_words_regression}
+# linear regression with log odds of a discourse category's pooled contribution as the predicted value and discourse_category*timestep as the predictors
+bymonth$log_odds <- log(bymonth$contrib/(bymonth$allcontrib-bymonth$contrib))
+bymonth$discourse_category_new <- ifelse(bymonth$discourse_category == "conseq",1,0)
+poly_qr <- with(bymonth,(lm(log_odds ~ polym(discourse_category_new, monthNum, degree=3, raw=TRUE))))
+```
+
+### Plots
+
+#### Discourse Categories
+
+The following chunk produces a plot of the pooled discourse category contributions, along with the best-fitting local polynomial regression line.
+
+```{r pooled_top_words_plot}
+ggplot(bymonth, aes(x=monthNum, y=contrib, color=discourse_category)) + geom_point() + geom_smooth(method=gamma(x, bs = "cs")) +
+  scale_x_continuous(name="Time", breaks=c(23+(0:9)*12), labels=allMonths.translate[as.character(c(23+(0:9)*12))]) +
+  theme_bw() +
+  geom_point() +
+  ylab("Percentage contribution") +
+  scale_color_discrete("Discourse Categories",labels=c("Consequentialist","Protected-values-based")) +
+  geom_vline(xintercept=75) +
+  geom_vline(xintercept=112) 
+```
+
+#### Value-based Topics
+
+The following plot shows the trends associated with individual value-based topics. 
+
+```{r value_topics_plot}
+# save for ind figures
+save(allMonths, file="Monthly_Topic_Contrib_objs.RData")
+
+ggplot(subset(allMonths, topic %in% c(12,48,49)),
+       aes(monthNum,contrib,color=topic)) +
+  geom_smooth(span=0.4) +
+  scale_x_continuous(name="Time", breaks=c(23+(0:9)*12), labels=allMonths.translate[as.character(c(23+(0:9)*12))]) +
+  scale_fill_manual(values=c("red", "blue", "black")) +
+  scale_color_manual(values=c("red", "blue", "black"),labels = c("Religious arguments","Freedom of belief","LGBT rights")) +
+  theme_bw() +
+  geom_point() +
+  geom_vline(xintercept=75) +
+  geom_vline(xintercept=112) +
+  ylab("Percentage contribution")
+```
+
+#### Consequence-based Topics
+
+The following plot shows the trends associated with individual consequence-based topics.
+
+```{r conseq_topics_plot}
+ggplot(subset(allMonths, topic %in% c(28,22,27,4,14)),
+       aes(monthNum,contrib,color=topic)) +
+  geom_smooth(span=0.4) +
+  scale_x_continuous(name="Time", breaks=c(23+(0:9)*12), labels=allMonths.translate[as.character(c(23+(0:9)*12))]) +
+  scale_fill_manual(values=c("red", "blue", "black", "green", "purple")) +
+  scale_color_manual(values=c("red", "blue", "black", "green", "purple"),labels = c("employer attitude and regulations","cultural and historical status","politicians' stance","children of same-sex parents","SSM as a policy issue")) +
+  theme_bw() +
+  geom_point() +
+  ylab("Percentage contribution") +
+  geom_vline(xintercept=75) +
+  geom_vline(xintercept=112)
+```
+
+#### Major topics that are neither
+
+```{r neut_topics_plot}
+ggplot(subset(allMonths, topic %in% c(16,33)),
+       aes(monthNum,contrib,color=topic)) +
+  geom_smooth(method=loess) +
+  scale_x_continuous(name="Time", breaks=c(23+(0:9)*12), labels=allMonths.translate[as.character(c(23+(0:9)*12))]) +
+  scale_fill_manual(values=c("red", "blue")) +
+  scale_color_manual(values=c("red", "blue"),labels = c("forcing vs. allowing behaviors","personal anecdotes")) +
+  theme_bw() +
+  geom_point() +
+  ylab("Percentage contribution") +
+  geom_vline(xintercept=75) +
+  geom_vline(xintercept=112)
+# !(topic %in% important)
+```

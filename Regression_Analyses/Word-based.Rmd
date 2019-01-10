@@ -1,0 +1,182 @@
+---
+output:
+  pdf_document:
+    latex_engine: xelatex
+mainfont: DejaVu Sans
+monofont: DejaVu Sans Mono 
+---
+
+#### Read the 200 most predictive words and the text and ratings of impactful comments
+
+```{r}
+options(stringsAsFactors=F)
+##library(reticulate)
+
+(load("Expert-SameSex-no4-02-ratings.RData"))
+colnames(ratings.eval.z)
+
+length(w1 <- readLines("C:\\Users\\Babak\\Downloads\\words-cons"))
+length(w2 <- readLines("C:\\Users\\Babak\\Downloads\\words-vb"))
+
+words <- c(w1, w2)
+names(words) <- words
+dim(word.frame <- sapply(words, function(w){
+    sapply(strsplit(paste("", ratings.eval.z$text, ""), split=paste0("\\b", w, "\\b")), length) -1
+}))
+
+colnames(word.frame) <- paste0("W", 1:ncol(word.frame))
+
+
+ratings.eval.z <- cbind(ratings.eval.z, word.frame)
+save(ratings.eval.z, file="Expert-SameSex-no4-words-01-ratings.RData")
+
+```
+
+#### Run stepwise regression these words as predictors of ratings and output correlation and accuracy
+
+```{r}
+
+(d.formula <- as.formula(paste(".~ .",
+                        paste0("W", 1:length(words), collapse=" + "),
+                        sep=" + ")))
+
+summary(d.drop <- stats::step(lm(src.c ~ 1,
+                               data=subset(ratings.eval.z))
+                          , as.formula(d.formula), trace=0))
+
+
+cor(predict(d.drop), ratings.eval.z$src.c)
+mean(I(predict(d.drop) > 0) == I(ratings.eval.z$src.c > 0))
+
+
+```
+
+#### Run ten ten-fold cross-validations and output the average accuracy and number of times words were significant predictors
+
+```{r}
+set.seed(12)
+ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+
+(d.formula.all <- as.formula(paste("src.c ~ 1",
+                        paste0("W", 1:length(words), collapse=" + "),
+                        sep=" + ")))
+
+
+set.seed(12)
+lm.many <- lapply(1:10, function(nrun){
+    ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+    (afold <- lapply(unique(ratings.eval.z$fold), function(x.fold){
+        dim(d.train <<- subset(ratings.eval.z, !fold == x.fold))
+        dim(d.test <<-  subset(ratings.eval.z, fold == x.fold))
+        summary(d.drop <<- stats::step(lm(src.c ~ 1, data=d.train)
+                                     , as.formula(d.formula), trace=0))
+        correct = sum(sign(d.test$src.c) == sign(predict(d.drop, newdata=d.test)))
+        incorrect = sum(sign(d.test$src.c) != sign(predict(d.drop, newdata=d.test)))
+        ret <- list(correct=correct, incorrect=incorrect,
+                    coefs=summary(d.drop)$coefficients,
+                    rsquared = summary(d.drop)$adj.r.squared,
+                    cor=cor(d.test$src.c, predict(d.drop, newdata=d.test)))
+
+        ret
+    }))
+})
+
+
+## Example
+lm.many[[1]]
+
+(lm.many.folds <- sapply(lm.many, function(instance){
+    correctIncorrect <- rowSums(sapply(instance, function(fold){
+        ret <- c(correct=fold$correct, incorrect=fold$incorrect)
+    }))
+    correctIncorrect[1] / sum(correctIncorrect)
+}))
+
+exp(mean(log(lm.many.folds)))
+
+
+(sort(xtabs(~unlist(lapply(lm.many, function(instance){
+    lapply(instance, function(fold){
+        ret <- rownames(fold$coefs[fold$coefs[,"Pr(>|t|)"] < .05,])
+    })
+})))) -> goodwords)
+
+usewords <- names(goodwords[goodwords > 90])
+usewords <- usewords[grepl("^W", usewords)]
+words[as.numeric(gsub("W", "", usewords))]
+
+usewords <- names(goodwords[goodwords > 50])
+usewords <- usewords[grepl("^W", usewords)]
+words[as.numeric(gsub("W", "", usewords))]
+
+```
+
+#### Average correlations and adjusted R-squared across iterations
+
+```{r eval=F}
+(mean(unlist(lapply(lm.many,function(l){lapply(l,function(d){d$rsquared})}))))
+
+(sum(unlist(lapply(lm.many,function(l){lapply(l,function(d){d$cor})}))))
+
+
+
+set.seed(12)
+ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+
+(d.formula.all <- as.formula(paste("src.c ~ 1",
+                        paste0("X", 0:(n.topics-1), collapse=" + "),
+                        sep=" + ")))
+
+ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+
+
+set.seed(12)
+lmer.many <- lapply(1:10, function(nrun){
+    ratings.eval.z$fold <- ceiling(runif(nrow(ratings.eval.z))*10)
+    (afold <- lapply(unique(ratings.eval.z$fold), function(x.fold){
+        dim(d.train <<- subset(ratings.eval.z, !fold == x.fold))
+        dim(d.test <<-  subset(ratings.eval.z, fold == x.fold))
+        suppressMessages(suppressWarnings({
+            d.lmer <<- lmerTest::step(lmer(update(d.formula.all, . ~ . + (1|Group)),
+                                           data=d.train))
+        }))
+        d.drop <<- attributes(d.lmer)$model
+        correct = sum(sign(d.test$src.c) == sign(predict(d.drop, newdata=d.test)))
+        incorrect = sum(sign(d.test$src.c) != sign(predict(d.drop, newdata=d.test)))
+        ret <- list(correct=correct, incorrect=incorrect,
+                    coefs=summary(d.drop)$coefficients,
+                    cor=cor(d.test$src.c, predict(d.drop, newdata=d.test)))
+
+        ret
+    }))
+    afold
+})
+##exp(mean(log(many)))
+
+(lmer.many.folds <- sapply(lmer.many, function(instance){
+    correctIncorrect <- rowSums(sapply(instance, function(fold){
+        ret <- c(correct=fold$correct, incorrect=fold$incorrect)
+    }))
+    correctIncorrect[1] / sum(correctIncorrect)
+}))
+
+exp(mean(log(lmer.many.folds)))
+
+
+sort(xtabs(~unlist(lapply(lmer.many, function(instance){
+    lapply(instance, function(fold){
+        ret <- rownames(fold$coefs[fold$coefs[,"Pr(>|t|)"] < .05,])
+    })
+}))))
+
+
+
+```
+
+#### Save results of all iterations
+
+```{r}
+save(lm.many,  file="Expert_SameSex-no4-words-01-objs.RData")
+
+
+```
