@@ -9,7 +9,7 @@
 #### Brown University, Department of Cognitive, Linguistic and Psychological Sciences
 
 ### Citation
-Hemmatian, B., Sloman, S.J., Cohen Priva, U., & Sloman, S.A. (in press). Think of the consequences: A decade of discourse about same-sex marriage. Behavior Research Methods. 
+Hemmatian, B., Sloman, S.J., Cohen Priva, U., & Sloman, S.A. (in press). Think of the consequences: A decade of discourse about same-sex marriage. *Behavior Research Methods*. 
 
 ### Outline
 
