@@ -8,11 +8,14 @@
 ### Steven A. Sloman, Uriel Cohen Priva
 #### Brown University, Department of Cognitive, Linguistic and Psychological Sciences
 
+### Citation
+Hemmatian, B., Sloman, S.J., Cohen Priva, U., & Sloman, S.A. (in press). Think of the consequences: A decade of discourse about same-sex marriage. Behavior Research Methods. 
+
 ### Outline
 
 This repository holds Python and R code that can be used to extract information about trends in Reddit comments that relate to same-sex marriage since 2006. Trivial changes to the filter at the end of [lda_defaults.py](https://github.com/BabakHemmatian/Gay_Marriage_Corpus_Study/blob/master/lda_defaults.py) can make it possible to use the code for extracting and analyzing comments related to any topic. 
 
-This repository was developed in the process of preparing an academic manuscript that can be found [here](https://www.researchgate.net/publication/325883030_Think_of_the_Consequences_A_Decade_of_Discourse_About_Same-Sex_Marriage). Results reported in the manuscript and included in this repository are based on Reddit data from January 2006 to September 2017. 
+This repository was developed in the process of preparing an academic manuscript currently in press that can be found [here](https://www.researchgate.net/publication/325883030_Think_of_the_Consequences_A_Decade_of_Discourse_About_Same-Sex_Marriage). Results reported in the manuscript and included in this repository are based on Reddit data from January 2006 to September 2017. 
 
 More details about the contents of each directory in this repository can be found in readme.txt files included in the relevant folder.
 
