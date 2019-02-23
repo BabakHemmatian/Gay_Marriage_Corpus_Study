@@ -1,5 +1,17 @@
 from __future__ import division
-"""TODO: Add docstring.
+"""Usage:
+import nullmodel
+
+# Creates 100 sets of weights and features from 10 10-folds of the data.
+nullmodel.repeat_kfold()
+
+# Estimates the temporal trends.
+nullmodel.get_temporal_trends()
+
+# Plot the trends.
+wfs, ffs = nullmodel.get_saved_model_params()
+ids = [ f.split("-")[1] for f in wfs ]
+nullmodel.plot_trends(ids)
 """
 
 from collections import defaultdict
